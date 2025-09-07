@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GPX Elevation & Map Viewer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 1em;
+      background: #f9f9f9;
+    }
+    input[type="file"], select, button {
+      margin: 0.5em 0;
+      padding: 0.5em;
+      font-size: 1em;
+    }
+    canvas {
+      max-width: 100%;
+      height: auto;
+    }
+    #map {
+      height: 400px;
+      margin-top: 1em;
+    }
+    .summary {
+      margin-top: 1em;
+      font-size: 1em;
+    }
+  </style>
+</head>
+<body>
+  <h2>📍 GPX Elevation & Map Viewer</h2>
+  <label for="unitSelect">Units:</label>
+  <select id="unitSelect">
+    <option value="metric" selected>Metric (km/m)</option>
+    <option value="imperial">Imperial (mi/ft)</option>
+  </select>
+  <br>
+  <input type="file" multiple accept=".gpx" id="gpxFiles" />
+  <canvas id="elevationChart"></canvas>
+  <div id="map"></div>
+  <div class="summary" id="summary"></div>
+  <button onclick="downloadCSV(generateCSV(rawTracks, unitSelect.value))">
+    ⬇️ Download Summary as CSV
+  </button>
+
+  <script>
+    const chartCtx = document.getElementById('elevationChart').getContext('2d');
+    const summaryDiv = document.getElementById('summary');
+    const unitSelect = document.getElementById('unitSelect');
+    const map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    let rawTracks = [];
+
+    const elevationChart = new Chart(chartCtx, {
+      type: 'line',
+      data: { datasets: [] },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'top' },
+          title: { display: true, text: 'Elevation Profile' }
+        },
+        scales: {
+          x: { title: { display: true, text: 'Distance' } },
+          y: { title: { display: true, text: 'Elevation' } }
+        }
+      }
+    });
+
+    document.getElementById('gpxFiles').addEventListener('change', function (event) {
+      const files = event.target.files;
+      rawTracks = [];
+      elevationChart.data.datasets = [];
+      summaryDiv.innerHTML = '';
+      map.eachLayer(layer => {
+        if (layer instanceof L.Polyline) map.removeLayer(layer);
+      });
+
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function () {
+          const parser = new DOMParser();
+          const xml = parser.parseFromString(reader.result, 'application/xml');
+          const trkpts = xml.getElementsByTagName('trkpt');
+
+          let points = [];
+          let totalDistance = 0;
+          let prevLat = null, prevLon = null;
+
+          for (let i = 0; i < trkpts.length; i++) {
+            const lat = parseFloat(trkpts[i].getAttribute('lat'));
+            const lon = parseFloat(trkpts[i].getAttribute('lon'));
+            const ele = parseFloat(trkpts[i].getElementsByTagName('ele')[0].textContent);
+
+            let dist = 0;
+            if (prevLat !== null && prevLon !== null) {
+              dist = haversine(prevLat, prevLon, lat, lon);
+              totalDistance += dist;
+            }
+
+            points.push({ dist: totalDistance, ele, lat, lon });
+            prevLat = lat;
+            prevLon = lon;
+          }
+
+          const elevationGain = calculateElevationGain(points);
+          rawTracks.push({ name: file.name, points, totalDistance, elevationGain });
+          updateChart();
+          updateMap();
+        };
+        reader.readAsText(file);
+      });
+    });
+
+    unitSelect.addEventListener('change', () => {
+      updateChart();
+      updateSummary();
+    });
+
+    function updateChart() {
+      const unit = unitSelect.value;
+      elevationChart.data.datasets = [];
+
+      rawTracks.forEach(track => {
+        const converted = track.points.map(p => ({
+          x: unit === 'imperial' ? (p.dist * 0.621371).toFixed(2) : p.dist.toFixed(2),
+          y: unit === 'imperial' ? (p.ele * 3.28084).toFixed(0) : p.ele.toFixed(0)
+        }));
+
+        elevationChart.data.datasets.push({
+          label: track.name,
+          data: converted,
+          borderColor: getRandomColor(),
+          fill: false
+        });
+      });
+
+      elevationChart.options.scales.x.title.text = unit === 'imperial' ? 'Distance (mi)' : 'Distance (km)';
+      elevationChart.options.scales.y.title.text = unit === 'imperial' ? 'Elevation (ft)' : 'Elevation (m)';
+      elevationChart.update();
+      updateSummary();
+    }
+
+    function updateMap() {
+      map.eachLayer(layer => {
+        if (layer instanceof L.Polyline) map.removeLayer(layer);
+      });
+
+      let allBounds = [];
+
+      rawTracks.forEach(track => {
+        const latlngs = track.points.map(p => [p.lat, p.lon]);
+        const polyline = L.polyline(latlngs, {
+          color: getRandomColor(),
+          weight: 3,
+          opacity: 0.8
+        }).addTo(map);
+        allBounds.push(polyline.getBounds());
+      });
+
+      if (allBounds.length > 0) {
+        const combinedBounds = allBounds.reduce((acc, b) => acc.extend(b), allBounds[0]);
+        map.fitBounds(combinedBounds);
+      }
+    }
+
+    function updateSummary() {
+      const unit = unitSelect.value;
+      summaryDiv.innerHTML = '';
+      rawTracks.forEach(track => {
+        const dist = unit === 'imperial'
+          ? (track.totalDistance * 0.621371).toFixed(2) + ' mi'
+          : track.totalDistance.toFixed(2) + ' km';
+        const gain = unit === 'imperial'
+          ? (track.elevationGain * 3.28084).toFixed(0) + ' ft'
+          : track.elevationGain.toFixed(0) + ' m';
+        summaryDiv.innerHTML += `<p><strong>${track.name}</strong>: ${dist}, Elevation Gain: ${gain}</p>`;
+      });
+    }
+
+    function calculateElevationGain(points) {
+      let gain = 0;
+      for (let i = 1; i < points.length; i++) {
+        const delta = points[i].ele - points[i - 1].ele;
+        if (delta > 0) gain += delta;
+      }
+      return gain;
+    }
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function getRandomColor() {
+      return `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`;
+    }
+
+    function generateCSV(tracks, unit) {
+      const rows = [['Track Name', `Distance (${unit === 'imperial' ? 'mi' : 'km'})`, `Elevation Gain (${unit === 'imperial' ? 'ft' : 'm'})`]];
+      tracks.forEach(track => {
+        const dist = unit === 'imperial' ? (track.totalDistance * 0.621371).toFixed(2) : track.totalDistance.toFixed(2);
+        const gain = unit === 'imperial' ? (track.elevationGain * 3.28084).toFixed(0) : track.elevationGain.toFixed(0);
+        rows.push
