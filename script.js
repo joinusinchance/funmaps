@@ -95,11 +95,11 @@ function updateChart() {
 
   rawTracks.forEach(track => {
     if (!Array.isArray(track.points) || track.points.length === 0) return;
-
-    const converted = track.points.map(p => ({
-      x: unit === 'imperial' ? p.dist * 0.621371 : p.dist,
-      y: unit === 'imperial' ? p.ele * 3.28084 : p.ele
-    }));
+  
+  const converted = track.points.map(p => ({
+    x: parseFloat(unit === 'imperial' ? (p.dist * 0.621371).toFixed(2) : p.dist.toFixed(2)),
+    y: parseFloat(unit === 'imperial' ? (p.ele * 3.28084).toFixed(0) : p.ele.toFixed(0))
+  }));
 
     elevationChart.data.datasets.push({
       label: track.name,
@@ -111,6 +111,11 @@ function updateChart() {
       pointRadius: 0 // hide points for cleaner look
     });
   });
+
+
+
+
+  
 
   elevationChart.options.scales.x.title.text = unit === 'imperial' ? 'Distance (mi)' : 'Distance (km)';
   elevationChart.options.scales.y.title.text = unit === 'imperial' ? 'Elevation (ft)' : 'Elevation (m)';
