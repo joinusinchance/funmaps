@@ -113,18 +113,6 @@ function updateChart() {
   });
 
 
-
-
-  
-
-  elevationChart.options.scales.x.title.text = unit === 'imperial' ? 'Distance (mi)' : 'Distance (km)';
-  elevationChart.options.scales.y.title.text = unit === 'imperial' ? 'Elevation (ft)' : 'Elevation (m)';
-  elevationChart.update();
-
-  updateSummary();
-}
-
-
   elevationChart.options.scales.x.title.text = unit === 'imperial' ? 'Distance (mi)' : 'Distance (km)';
   elevationChart.options.scales.y.title.text = unit === 'imperial' ? 'Elevation (ft)' : 'Elevation (m)';
   elevationChart.update();
