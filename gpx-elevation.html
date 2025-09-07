@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GPX Elevation Comparison</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/togpx/0.1.5/togpx.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.3/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.5.1/gpx.min.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    canvas { max-width: 100%; }
+  </style>
+</head>
+<body>
+  <h2>Compare GPX Elevation Profiles</h2>
+  <input type="file" id="gpxFiles" multiple accept=".gpx"><br><br>
+  <canvas id="elevationChart" height="400"></canvas>
+
+  <script>
+    const ctx = document.getElementById('elevationChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'Distance (km)' }},
+          y: { title: { display: true, text: 'Elevation (m)' }}
+        }
+      }
+    });
+
+    document.getElementById('gpxFiles').addEventListener('change', function(event) {
+      const files = event.target.files;
+      for (let file of files) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const gpx = new DOMParser().parseFromString(e.target.result, "text/xml");
+          const trkpts = gpx.querySelectorAll("trkpt");
+          let distances = [], elevations = [], totalDist = 0;
+          let prevLat = null, prevLon = null;
+
+          trkpts.forEach(pt => {
+            const lat = parseFloat(pt.getAttribute("lat"));
+            const lon = parseFloat(pt.getAttribute("lon"));
+            const ele = parseFloat(pt.querySelector("ele").textContent);
+
+            if (prevLat !== null) {
+              const dist = haversine(prevLat, prevLon, lat, lon);
+              totalDist += dist;
+            }
+
+            distances.push((totalDist).toFixed(2));
+            elevations.push(ele);
+            prevLat = lat;
+            prevLon = lon;
+          });
+
+          chart.data.labels = distances;
+          chart.data.datasets.push({
+            label: file.name,
+            data: elevations,
+            borderColor: getRandomColor(),
+            fill: false
+          });
+          chart.update();
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371; // km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function getRandomColor() {
+      return 'hsl(' + Math.floor(Math.random() * 360) + ', 70%, 50%)';
+    }
+  </script>
+</body>
+</html>
