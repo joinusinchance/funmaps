@@ -1,0 +1,28 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 1em;
+  background: #f9f9f9;
+}
+
+input[type="file"],
+select,
+button {
+  margin: 0.5em 0;
+  padding: 0.5em;
+  font-size: 1em;
+}
+
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+#map {
+  height: 400px;
+  margin-top: 1em;
+}
+
+.summary {
+  margin-top: 1em;
+  font-size: 1em;
+}
