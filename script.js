@@ -52,6 +52,8 @@ function handleFiles(event) {
       const xml = parser.parseFromString(reader.result, 'application/xml');
       const trkpts = xml.getElementsByTagName('trkpt');
 
+      if (!trkpts.length) return;
+
       let points = [];
       let totalDistance = 0;
       let prevLat = null, prevLon = null;
@@ -59,7 +61,9 @@ function handleFiles(event) {
       for (let i = 0; i < trkpts.length; i++) {
         const lat = parseFloat(trkpts[i].getAttribute('lat'));
         const lon = parseFloat(trkpts[i].getAttribute('lon'));
-        const ele = parseFloat(trkpts[i].getElementsByTagName('ele')[0].textContent);
+        const eleTag = trkpts[i].getElementsByTagName('ele')[0];
+        if (!eleTag) continue;
+        const ele = parseFloat(eleTag.textContent);
 
         let dist = 0;
         if (prevLat !== null && prevLon !== null) {
@@ -84,13 +88,17 @@ function handleFiles(event) {
 }
 
 function updateChart() {
+  if (!rawTracks.length) return;
+
   const unit = unitSelect.value;
   elevationChart.data.datasets = [];
 
   rawTracks.forEach(track => {
+    if (!Array.isArray(track.points)) return;
+
     const converted = track.points.map(p => ({
-      x: unit === 'imperial' ? (p.dist * 0.621371).toFixed(2) : p.dist.toFixed(2),
-      y: unit === 'imperial' ? (p.ele * 3.28084).toFixed(0) : p.ele.toFixed(0)
+      x: parseFloat(unit === 'imperial' ? (p.dist * 0.621371).toFixed(2) : p.dist.toFixed(2)),
+      y: parseFloat(unit === 'imperial' ? (p.ele * 3.28084).toFixed(0) : p.ele.toFixed(0))
     }));
 
     elevationChart.data.datasets.push({
@@ -116,6 +124,8 @@ function updateMap() {
   let allBounds = [];
 
   rawTracks.forEach(track => {
+    if (!Array.isArray(track.points)) return;
+
     const latlngs = track.points.map(p => [p.lat, p.lon]);
     const polyline = L.polyline(latlngs, {
       color: track.color,
@@ -169,28 +179,26 @@ function getRandomColor() {
   return `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`;
 }
 
+function generateCSV(tracks, unit) {
+  const rows = [['Track Name', `Distance (${unit === 'imperial' ? 'mi' : 'km'})`, `Elevation Gain (${unit === 'imperial' ? 'ft' : 'm'})`]];
+  tracks.forEach(track => {
+    const dist = unit === 'imperial'
+      ? (track.totalDistance * 0.621371).toFixed(2)
+      : track.totalDistance.toFixed(2);
+    const gain = unit === 'imperial'
+      ? (track.elevationGain * 3.28084).toFixed(0)
+      : track.elevationGain.toFixed(0);
+    rows.push([track.name, dist, gain]);
+  });
+  return rows.map(row => row.join(',')).join('\n');
+}
 
-  function generateCSV(tracks, unit) {
-    const rows = [['Track Name', `Distance (${unit === 'imperial' ? 'mi' : 'km'})`, `Elevation Gain (${unit === 'imperial' ? 'ft' : 'm'})`]];
-    tracks.forEach(track => {
-      const dist = unit === 'imperial'
-        ? (track.totalDistance * 0.621371).toFixed(2)
-        : track.totalDistance.toFixed(2);
-      const gain = unit === 'imperial'
-        ? (track.elevationGain * 3.28084).toFixed(0)
-        : track.elevationGain.toFixed(0);
-      rows.push([track.name, dist, gain]);
-    });
-    return rows.map(row => row.join(',')).join('\n');
-  }
-
-  function downloadCSV(content, filename = 'gpx_summary.csv') {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
-</script>
+function downloadCSV(content, filename = 'gpx_summary.csv') {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
