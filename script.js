@@ -94,11 +94,11 @@ function updateChart() {
   elevationChart.data.datasets = [];
 
   rawTracks.forEach(track => {
-    if (!Array.isArray(track.points)) return;
+    if (!Array.isArray(track.points) || track.points.length === 0) return;
 
     const converted = track.points.map(p => ({
-      x: parseFloat(unit === 'imperial' ? (p.dist * 0.621371).toFixed(2) : p.dist.toFixed(2)),
-      y: parseFloat(unit === 'imperial' ? (p.ele * 3.28084).toFixed(0) : p.ele.toFixed(0))
+      x: unit === 'imperial' ? p.dist * 0.621371 : p.dist,
+      y: unit === 'imperial' ? p.ele * 3.28084 : p.ele
     }));
 
     elevationChart.data.datasets.push({
@@ -106,9 +106,19 @@ function updateChart() {
       data: converted,
       borderColor: track.color,
       backgroundColor: track.color,
-      fill: false
+      fill: false,
+      tension: 0.1, // smooth line
+      pointRadius: 0 // hide points for cleaner look
     });
   });
+
+  elevationChart.options.scales.x.title.text = unit === 'imperial' ? 'Distance (mi)' : 'Distance (km)';
+  elevationChart.options.scales.y.title.text = unit === 'imperial' ? 'Elevation (ft)' : 'Elevation (m)';
+  elevationChart.update();
+
+  updateSummary();
+}
+
 
   elevationChart.options.scales.x.title.text = unit === 'imperial' ? 'Distance (mi)' : 'Distance (km)';
   elevationChart.options.scales.y.title.text = unit === 'imperial' ? 'Elevation (ft)' : 'Elevation (m)';
