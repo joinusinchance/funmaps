@@ -2,19 +2,39 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Standardize GPX files</title>
+  <title>GPX Normalizer with Map & Elevation Chart</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    #map { height: 400px; margin-top: 20px; }
+    #chart { width: 100%; max-width: 800px; margin-top: 20px; }
+  </style>
 </head>
 <body>
-  
-  
   <h2>Upload Two GPX Files</h2>
   <input type="file" id="gpx1" accept=".gpx"><br><br>
   <input type="file" id="gpx2" accept=".gpx"><br><br>
-  <button onclick="processGPX()">Normalize Granularity</button>
+  <button onclick="processGPX()">Normalize & Visualize</button>
   <div id="downloadLinks"></div>
-  <br>
-  Thanks togpx and gpx-parser libraries and Copilot.  
+  <div id="map"></div>
+  <canvas id="chart"></canvas>
+
   <script>
+    let map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = deg => deg * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
     function parseGPX(xmlText) {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlText, "application/xml");
@@ -24,26 +44,40 @@
       for (let pt of trkpts) {
         const lat = parseFloat(pt.getAttribute("lat"));
         const lon = parseFloat(pt.getAttribute("lon"));
+        const eleEl = pt.getElementsByTagName("ele")[0];
         const timeEl = pt.getElementsByTagName("time")[0];
+        const ele = eleEl ? parseFloat(eleEl.textContent) : null;
         const time = timeEl ? new Date(timeEl.textContent).getTime() : null;
-        points.push({ lat, lon, time });
+        points.push({ lat, lon, ele, time });
       }
       return points;
     }
 
-    function resample(points, intervalMs = 5000) {
-      if (!points.length) return [];
+    function interpolatePoints(p1, p2, interval) {
+      const dist = haversine(p1.lat, p1.lon, p2.lat, p2.lon);
+      const steps = Math.floor(dist / interval);
+      const points = [];
 
-      let resampled = [points[0]];
-      let nextTime = points[0].time + intervalMs;
-
-      for (let i = 1; i < points.length; i++) {
-        if (points[i].time >= nextTime) {
-          resampled.push(points[i]);
-          nextTime += intervalMs;
-        }
+      for (let i = 1; i <= steps; i++) {
+        const ratio = i / steps;
+        const lat = p1.lat + (p2.lat - p1.lat) * ratio;
+        const lon = p1.lon + (p2.lon - p1.lon) * ratio;
+        const ele = p1.ele !== null && p2.ele !== null ? p1.ele + (p2.ele - p1.ele) * ratio : null;
+        const time = p1.time !== null && p2.time !== null ? p1.time + (p2.time - p1.time) * ratio : null;
+        points.push({ lat, lon, ele, time });
       }
-      return resampled;
+      return points;
+    }
+
+    function normalizeByDistance(track, interval) {
+      const normalized = [track[0]];
+      for (let i = 1; i < track.length; i++) {
+        const p1 = track[i - 1];
+        const p2 = track[i];
+        const interpolated = interpolatePoints(p1, p2, interval);
+        normalized.push(...interpolated, p2);
+      }
+      return normalized;
     }
 
     function buildGPX(points) {
@@ -51,7 +85,10 @@
 <gpx version="1.1" creator="Copilot" xmlns="http://www.topografix.com/GPX/1/1">
   <trk><name>Normalized Track</name><trkseg>`;
       for (let pt of points) {
-        gpx += `<trkpt lat="${pt.lat}" lon="${pt.lon}"><time>${new Date(pt.time).toISOString()}</time></trkpt>\n`;
+        gpx += `<trkpt lat="${pt.lat}" lon="${pt.lon}">`;
+        if (pt.ele !== null) gpx += `<ele>${pt.ele.toFixed(2)}</ele>`;
+        if (pt.time !== null) gpx += `<time>${new Date(pt.time).toISOString()}</time>`;
+        gpx += `</trkpt>\n`;
       }
       gpx += `</trkseg></trk></gpx>`;
       return gpx;
@@ -68,6 +105,37 @@
       document.getElementById("downloadLinks").appendChild(document.createElement("br"));
     }
 
+    function plotElevation(points) {
+      const labels = points.map(p => p.time ? new Date(p.time).toLocaleTimeString() : '');
+      const data = points.map(p => p.ele);
+      const ctx = document.getElementById('chart').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Elevation (m)',
+            data,
+            borderColor: 'blue',
+            fill: false,
+            tension: 0.1
+          }]
+        },
+        options: {
+          scales: {
+            x: { title: { display: true, text: 'Time' }},
+            y: { title: { display: true, text: 'Elevation (m)' }}
+          }
+        }
+      });
+    }
+
+    function drawTrackOnMap(points) {
+      const latlngs = points.map(p => [p.lat, p.lon]);
+      const polyline = L.polyline(latlngs, { color: 'red' }).addTo(map);
+      map.fitBounds(polyline.getBounds());
+    }
+
     async function processGPX() {
       const file1 = document.getElementById("gpx1").files[0];
       const file2 = document.getElementById("gpx2").files[0];
@@ -79,14 +147,18 @@
       const points1 = parseGPX(text1);
       const points2 = parseGPX(text2);
 
-      const normalized1 = resample(points1);
-      const normalized2 = resample(points2);
+      const interval = 10; // meters
+      const normalized1 = normalizeByDistance(points1, interval);
+      const normalized2 = normalizeByDistance(points2, interval);
 
       const gpxOut1 = buildGPX(normalized1);
       const gpxOut2 = buildGPX(normalized2);
 
       downloadFile(gpxOut1, "normalized1.gpx");
       downloadFile(gpxOut2, "normalized2.gpx");
+
+      drawTrackOnMap(normalized1);
+      plotElevation(normalized1);
     }
   </script>
 </body>
