@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPX File Comparator</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0; background-color: #f4f7f9; }
+        .container { max-width: 1200px; margin: 20px auto; padding: 20px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 8px; }
+        header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }
+        h1 { color: #333; }
+        .input-area { text-align: center; margin-bottom: 20px; }
+        input[type="file"] { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        button { padding: 10px 15px; font-size: 16px; color: #fff; background-color: #007bff; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.3s; }
+        button:hover { background-color: #0056b3; }
+        .comparison-results { display: flex; flex-direction: column; gap: 20px; }
+        .statistics-section { padding: 20px; background-color: #e9ecef; border-radius: 8px; }
+        .file-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 10px; }
+        .stat-card { padding: 15px; background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 8px; }
+        .stat-card h4 { margin-top: 0; color: #007bff; }
+        .map-section, .chart-section { padding: 20px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        #map { height: 500px; width: 100%; border-radius: 8px; border: 1px solid #dee2e6; }
+        #elevationChart { height: 400px; width: 100%; }
+    </style>
+    <!-- Leaflet CSS and JS for interactive map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <!-- Leaflet GPX plugin for handling GPX files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.5.1/gpx.min.js"></script>
+    <!-- Chart.js for elevation charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Papa Parse for CSV handling (optional but good practice) -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script> -->
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>GPX File Comparator</h1>
+            <p>Select two or more GPX files to compare their tracks on a map, view elevation profiles, and see key statistics.</p>
+        </header>
+
+        <div class="input-area">
+            <input type="file" id="gpxFiles" accept=".gpx" multiple>
+            <button onclick="processFiles()">Compare Files</button>
+        </div>
+
+        <main class="comparison-results">
+            <div class="statistics-section">
+                <h2>Statistics</h2>
+                <div id="statistics" class="file-stats">
+                    <p>Upload files and click "Compare Files" to see statistics.</p>
+                </div>
+            </div>
+
+            <div class="map-section">
+                <h2>Map Comparison</h2>
+                <div id="map"></div>
+            </div>
+
+            <div class="chart-section">
+                <h2>Elevation Chart</h2>
+                <canvas id="elevationChart"></canvas>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const map = L.map('map').setView([51.505, -0.09], 13);
+        let elevationChart;
+        let fileCounter = 0;
+        const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#17a2b8']; // Line colors for tracks
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        async function processFiles() {
+            const fileInput = document.getElementById('gpxFiles');
+            const files = fileInput.files;
+            
+            if (files.length < 2) {
+                alert('Please select at least two GPX files.');
+                return;
+            }
+
+            // Clear previous results
+            document.getElementById('statistics').innerHTML = '';
+            map.eachLayer(layer => {
+                if (layer instanceof L.GPX) {
+                    map.removeLayer(layer);
+                }
+            });
+            fileCounter = 0;
+            const elevationData = [];
+
+            for (const file of files) {
+                await processGpxFile(file, fileCounter, elevationData);
+                fileCounter++;
+            }
+
+            updateElevationChart(elevationData);
+        }
+
+        function processGpxFile(file, index, elevationData) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const gpxData = e.target.result;
+                    
+                    const gpx = new L.GPX(gpxData, {
+                        async: true,
+                        marker_options: {
+                            startIconUrl: null, endIconUrl: null, shadowUrl: null
+                        },
+                        polyline_options: {
+                            color: colors[index % colors.length],
+                            opacity: 0.75,
+                            weight: 5,
+                            lineCap: 'round'
+                        }
+                    }).on('loaded', function(e) {
+                        const gpxLayer = e.target;
+                        map.fitBounds(gpxLayer.getBounds());
+                        displayStatistics(file.name, gpxLayer, index);
+                        
+                        const trackData = gpxLayer.get_trackpoints();
+                        const distances = [0];
+                        const elevations = [];
+                        let totalDistanceMeters = 0;
+
+                        for (let i = 0; i < trackData.length; i++) {
+                            const point = trackData[i];
+                            elevations.push(point.meta.ele);
+                            if (i > 0) {
+                                const prevPoint = trackData[i-1];
+                                const distanceMeters = map.distance(
+                                    L.latLng(prevPoint.lat, prevPoint.lon),
+                                    L.latLng(point.lat, point.lon)
+                                );
+                                totalDistanceMeters += distanceMeters;
+                                distances.push(totalDistanceMeters / 1000); // Store distance in km
+                            }
+                        }
+
+                        elevationData.push({
+                            label: file.name,
+                            distances,
+                            elevations,
+                            color: colors[index % colors.length]
+                        });
+
+                        resolve();
+                    }).addTo(map);
+                };
+                reader.onerror = reject;
+                reader.readAsText(file);
+            });
+        }
+
+        function displayStatistics(fileName, gpxLayer, index) {
+            const stats = {
+                distance_km: (gpxLayer.get_distance() / 1000).toFixed(2),
+                distance_mi: (gpxLayer.get_distance() * 0.000621371).toFixed(2),
+                elevation_gain: gpxLayer.get_elevation_gain().toFixed(0),
+                elevation_loss: gpxLayer.get_elevation_loss().toFixed(0),
+                min_elevation: gpxLayer.get_elevation_min().toFixed(0),
+                max_elevation: gpxLayer.get_elevation_max().toFixed(0),
+                start_time: gpxLayer.get_start_time().toLocaleString(),
+                end_time: gpxLayer.get_end_time().toLocaleString(),
+            };
+            
+            const statsDiv = document.getElementById('statistics');
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            card.style.borderLeft = `5px solid ${colors[index % colors.length]}`;
+            card.innerHTML = `
+                <h4>${fileName}</h4>
+                <p><strong>Distance:</strong> ${stats.distance_km} km / ${stats.distance_mi} miles</p>
+                <p><strong>Elevation Gain:</strong> ${stats.elevation_gain} m</p>
+                <p><strong>Elevation Loss:</strong> ${stats.elevation_loss} m</p>
+                <p><strong>Min Elevation:</strong> ${stats.min_elevation} m</p>
+                <p><strong>Max Elevation:</strong> ${stats.max_elevation} m</p>
+            `;
+            statsDiv.appendChild(card);
+        }
+
+        function updateElevationChart(data) {
+            const ctx = document.getElementById('elevationChart').getContext('2d');
+            
+            if (elevationChart) {
+                elevationChart.destroy();
+            }
+
+            const datasets = data.map(track => ({
+                label: track.label,
+                data: track.elevations.map((ele, i) => ({
+                    x: track.distances[i],
+                    y: ele
+                })),
+                borderColor: track.color,
+                backgroundColor: 'transparent',
+                pointRadius: 0,
+                borderWidth: 2,
+                fill: false,
+                tension: 0.4
+            }));
+
+            elevationChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'Distance (km)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Elevation (m)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
