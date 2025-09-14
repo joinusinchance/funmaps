@@ -29,8 +29,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.5.1/gpx.min.js"></script>
     <!-- Chart.js for elevation charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Papa Parse for CSV handling (optional but good practice) -->
-    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script> -->
 </head>
 <body>
     <div class="container">
@@ -68,7 +66,7 @@
         const map = L.map('map').setView([51.505, -0.09], 13);
         let elevationChart;
         let fileCounter = 0;
-        const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#17a2b8']; // Line colors for tracks
+        const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#17a2b8'];
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
@@ -84,7 +82,7 @@
             }
 
             // Clear previous results
-            document.getElementById('statistics').innerHTML = '';
+            document.getElementById('statistics').innerHTML = '<p>Processing files...</p>';
             map.eachLayer(layer => {
                 if (layer instanceof L.GPX) {
                     map.removeLayer(layer);
@@ -93,10 +91,9 @@
             fileCounter = 0;
             const elevationData = [];
 
-            for (const file of files) {
-                await processGpxFile(file, fileCounter, elevationData);
-                fileCounter++;
-            }
+            const promises = Array.from(files).map((file, index) => processGpxFile(file, index, elevationData));
+            
+            await Promise.all(promises);
 
             updateElevationChart(elevationData);
         }
@@ -120,11 +117,18 @@
                         }
                     }).on('loaded', function(e) {
                         const gpxLayer = e.target;
-                        map.fitBounds(gpxLayer.getBounds());
+                        
+                        // If it's the first file, center the map
+                        if (index === 0) {
+                            map.fitBounds(gpxLayer.getBounds());
+                        }
+
+                        // Collect statistics
                         displayStatistics(file.name, gpxLayer, index);
                         
+                        // Extract and store elevation data
                         const trackData = gpxLayer.get_trackpoints();
-                        const distances = [0];
+                        const distances = [];
                         const elevations = [];
                         let totalDistanceMeters = 0;
 
@@ -138,8 +142,8 @@
                                     L.latLng(point.lat, point.lon)
                                 );
                                 totalDistanceMeters += distanceMeters;
-                                distances.push(totalDistanceMeters / 1000); // Store distance in km
                             }
+                            distances.push(totalDistanceMeters / 1000); // Store distance in km
                         }
 
                         elevationData.push({
@@ -164,12 +168,14 @@
                 elevation_gain: gpxLayer.get_elevation_gain().toFixed(0),
                 elevation_loss: gpxLayer.get_elevation_loss().toFixed(0),
                 min_elevation: gpxLayer.get_elevation_min().toFixed(0),
-                max_elevation: gpxLayer.get_elevation_max().toFixed(0),
-                start_time: gpxLayer.get_start_time().toLocaleString(),
-                end_time: gpxLayer.get_end_time().toLocaleString(),
+                max_elevation: gpxLayer.get_elevation_max().toFixed(0)
             };
             
             const statsDiv = document.getElementById('statistics');
+            if (statsDiv.innerHTML.includes('Processing files...')) {
+                statsDiv.innerHTML = '';
+            }
+
             const card = document.createElement('div');
             card.className = 'stat-card';
             card.style.borderLeft = `5px solid ${colors[index % colors.length]}`;
@@ -191,19 +197,23 @@
                 elevationChart.destroy();
             }
 
-            const datasets = data.map(track => ({
-                label: track.label,
-                data: track.elevations.map((ele, i) => ({
-                    x: track.distances[i],
-                    y: ele
-                })),
-                borderColor: track.color,
-                backgroundColor: 'transparent',
-                pointRadius: 0,
-                borderWidth: 2,
-                fill: false,
-                tension: 0.4
-            }));
+            const datasets = data.map(track => {
+                // Combine distance and elevation into (x,y) format for Chart.js
+                const chartData = track.distances.map((distance, i) => ({
+                    x: distance,
+                    y: track.elevations[i]
+                }));
+                return {
+                    label: track.label,
+                    data: chartData,
+                    borderColor: track.color,
+                    backgroundColor: 'transparent',
+                    pointRadius: 0,
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.4
+                };
+            });
 
             elevationChart = new Chart(ctx, {
                 type: 'line',
