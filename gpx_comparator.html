@@ -80,7 +80,6 @@
                 return;
             }
 
-            // Clear previous results
             document.getElementById('statistics').innerHTML = '<p>Processing files...</p>';
             map.eachLayer(layer => {
                 if (layer instanceof L.GPX) {
@@ -89,31 +88,26 @@
             });
             
             const elevationData = [];
-            let allFilesHaveElevation = true;
-
             const promises = Array.from(files).map((file, index) => 
                 processGpxFile(file, index, elevationData)
             );
             
-            // Wait for all files to be processed
             try {
                 await Promise.all(promises);
             } catch (error) {
                 document.getElementById('statistics').innerHTML = `<p style="color: red;">Error processing files: ${error.message}</p>`;
+                console.error(error);
                 return;
             }
 
-            // Check if any file was missing elevation data and display a message
-            if (!elevationData.some(d => d.elevations.length > 0)) {
-                allFilesHaveElevation = false;
+            const hasElevation = elevationData.some(d => d.elevations.length > 0);
+            if (!hasElevation) {
                 document.getElementById('statistics').innerHTML += '<p style="color: orange;">Note: The elevation chart is empty because the uploaded GPX files do not contain elevation data. Please use a file that includes it or use a tool like GPS Visualizer to add it.</p>';
             }
 
-            // Update the chart only if at least one track has elevation data
-            if (allFilesHaveElevation) {
+            if (hasElevation) {
                 updateElevationChart(elevationData);
             } else if (elevationChart) {
-                // Destroy old chart if new data is empty
                 elevationChart.destroy();
             }
         }
@@ -138,37 +132,40 @@
                     }).on('loaded', function(e) {
                         const gpxLayer = e.target;
                         
-                        // Fit map bounds to the first track, then include others
                         if (index === 0) {
                             map.fitBounds(gpxLayer.getBounds());
                         } else {
                             map.fitBounds(map.getBounds().extend(gpxLayer.getBounds()));
                         }
 
-                        // Display statistics for this file
                         displayStatistics(file.name, gpxLayer, index);
                         
-                        // Extract and store elevation data for the chart
-                        const trackData = gpxLayer.get_trackpoints();
+                        // FIX: Correctly access trackpoints array
+                        const trackpoints = gpxLayer.get_trackpoints();
                         const distances = [];
                         const elevations = [];
                         let totalDistanceMeters = 0;
 
-                        // Check for elevation data before processing
-                        if (trackData.length > 0 && typeof trackData[0].meta.ele !== 'undefined') {
-                            for (let i = 0; i < trackData.length; i++) {
-                                const point = trackData[i];
+                        // FIX: Loop through the trackpoints to collect data
+                        for (let i = 0; i < trackpoints.length; i++) {
+                            const point = trackpoints[i];
+                            
+                            // Check if elevation data exists before pushing
+                            if (point.meta && typeof point.meta.ele !== 'undefined') {
                                 elevations.push(point.meta.ele);
-                                if (i > 0) {
-                                    const prevPoint = trackData[i-1];
-                                    const distanceMeters = map.distance(
-                                        L.latLng(prevPoint.lat, prevPoint.lon),
-                                        L.latLng(point.lat, point.lon)
-                                    );
-                                    totalDistanceMeters += distanceMeters;
-                                }
-                                distances.push(totalDistanceMeters / 1000); // Store distance in km
+                            } else {
+                                elevations.push(null); // Use null for missing elevation points
                             }
+
+                            if (i > 0) {
+                                const prevPoint = trackpoints[i-1];
+                                const distanceMeters = map.distance(
+                                    L.latLng(prevPoint.lat, prevPoint.lon),
+                                    L.latLng(point.lat, point.lon)
+                                );
+                                totalDistanceMeters += distanceMeters;
+                            }
+                            distances.push(totalDistanceMeters / 1000);
                         }
 
                         elevationData.push({
@@ -235,7 +232,8 @@
                     pointRadius: 0,
                     borderWidth: 2,
                     fill: false,
-                    tension: 0.4
+                    tension: 0.4,
+                    spanGaps: true // FIX: Ensures lines don't break on missing data points
                 };
             });
 
