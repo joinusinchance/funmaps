@@ -50,7 +50,6 @@
                 </div>
             </div>
             
-            <!-- MOVED: This section is now above the map section -->
             <div class="chart-section">
                 <h2>Elevation Chart</h2>
                 <canvas id="elevationChart"></canvas>
@@ -90,13 +89,33 @@
             });
             
             const elevationData = [];
-            const promises = Array.from(files).map((file, index) => processGpxFile(file, index, elevationData));
+            let allFilesHaveElevation = true;
+
+            const promises = Array.from(files).map((file, index) => 
+                processGpxFile(file, index, elevationData)
+            );
             
             // Wait for all files to be processed
-            await Promise.all(promises);
+            try {
+                await Promise.all(promises);
+            } catch (error) {
+                document.getElementById('statistics').innerHTML = `<p style="color: red;">Error processing files: ${error.message}</p>`;
+                return;
+            }
 
-            // Update the chart once all data is collected
-            updateElevationChart(elevationData);
+            // Check if any file was missing elevation data and display a message
+            if (!elevationData.some(d => d.elevations.length > 0)) {
+                allFilesHaveElevation = false;
+                document.getElementById('statistics').innerHTML += '<p style="color: orange;">Note: The elevation chart is empty because the uploaded GPX files do not contain elevation data. Please use a file that includes it or use a tool like GPS Visualizer to add it.</p>';
+            }
+
+            // Update the chart only if at least one track has elevation data
+            if (allFilesHaveElevation) {
+                updateElevationChart(elevationData);
+            } else if (elevationChart) {
+                // Destroy old chart if new data is empty
+                elevationChart.destroy();
+            }
         }
 
         function processGpxFile(file, index, elevationData) {
@@ -135,19 +154,21 @@
                         const elevations = [];
                         let totalDistanceMeters = 0;
 
-                        // Loop through trackpoints to calculate distance and collect elevation
-                        for (let i = 0; i < trackData.length; i++) {
-                            const point = trackData[i];
-                            elevations.push(point.meta.ele);
-                            if (i > 0) {
-                                const prevPoint = trackData[i-1];
-                                const distanceMeters = map.distance(
-                                    L.latLng(prevPoint.lat, prevPoint.lon),
-                                    L.latLng(point.lat, point.lon)
-                                );
-                                totalDistanceMeters += distanceMeters;
+                        // Check for elevation data before processing
+                        if (trackData.length > 0 && typeof trackData[0].meta.ele !== 'undefined') {
+                            for (let i = 0; i < trackData.length; i++) {
+                                const point = trackData[i];
+                                elevations.push(point.meta.ele);
+                                if (i > 0) {
+                                    const prevPoint = trackData[i-1];
+                                    const distanceMeters = map.distance(
+                                        L.latLng(prevPoint.lat, prevPoint.lon),
+                                        L.latLng(point.lat, point.lon)
+                                    );
+                                    totalDistanceMeters += distanceMeters;
+                                }
+                                distances.push(totalDistanceMeters / 1000); // Store distance in km
                             }
-                            distances.push(totalDistanceMeters / 1000); // Store distance in km
                         }
 
                         elevationData.push({
