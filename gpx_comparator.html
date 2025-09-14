@@ -49,15 +49,16 @@
                     <p>Upload files and click "Compare Files" to see statistics.</p>
                 </div>
             </div>
+            
+            <!-- MOVED: This section is now above the map section -->
+            <div class="chart-section">
+                <h2>Elevation Chart</h2>
+                <canvas id="elevationChart"></canvas>
+            </div>
 
             <div class="map-section">
                 <h2>Map Comparison</h2>
                 <div id="map"></div>
-            </div>
-
-            <div class="chart-section">
-                <h2>Elevation Chart</h2>
-                <canvas id="elevationChart"></canvas>
             </div>
         </main>
     </div>
@@ -65,7 +66,6 @@
     <script>
         const map = L.map('map').setView([51.505, -0.09], 13);
         let elevationChart;
-        let fileCounter = 0;
         const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#17a2b8'];
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -88,13 +88,14 @@
                     map.removeLayer(layer);
                 }
             });
-            fileCounter = 0;
+            
             const elevationData = [];
-
             const promises = Array.from(files).map((file, index) => processGpxFile(file, index, elevationData));
             
+            // Wait for all files to be processed
             await Promise.all(promises);
 
+            // Update the chart once all data is collected
             updateElevationChart(elevationData);
         }
 
@@ -118,20 +119,23 @@
                     }).on('loaded', function(e) {
                         const gpxLayer = e.target;
                         
-                        // If it's the first file, center the map
+                        // Fit map bounds to the first track, then include others
                         if (index === 0) {
                             map.fitBounds(gpxLayer.getBounds());
+                        } else {
+                            map.fitBounds(map.getBounds().extend(gpxLayer.getBounds()));
                         }
 
-                        // Collect statistics
+                        // Display statistics for this file
                         displayStatistics(file.name, gpxLayer, index);
                         
-                        // Extract and store elevation data
+                        // Extract and store elevation data for the chart
                         const trackData = gpxLayer.get_trackpoints();
                         const distances = [];
                         const elevations = [];
                         let totalDistanceMeters = 0;
 
+                        // Loop through trackpoints to calculate distance and collect elevation
                         for (let i = 0; i < trackData.length; i++) {
                             const point = trackData[i];
                             elevations.push(point.meta.ele);
@@ -198,7 +202,6 @@
             }
 
             const datasets = data.map(track => {
-                // Combine distance and elevation into (x,y) format for Chart.js
                 const chartData = track.distances.map((distance, i) => ({
                     x: distance,
                     y: track.elevations[i]
