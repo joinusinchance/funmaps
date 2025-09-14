@@ -1,165 +1,142 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>GPX Normalizer with Map & Elevation Chart</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    #map { height: 400px; margin-top: 20px; }
-    #chart { width: 100%; max-width: 800px; margin-top: 20px; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPX Route to Track Converter</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 2rem;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            padding: 2rem;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        input[type="file"] {
+            display: block;
+            margin-bottom: 1rem;
+        }
+        button {
+            padding: 10px 15px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        #status {
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+        #download-link {
+            display: none;
+            margin-top: 1rem;
+        }
+    </style>
 </head>
 <body>
-  <h2>Upload Two GPX Files</h2>
-  <input type="file" id="gpx1" accept=".gpx"><br><br>
-  <input type="file" id="gpx2" accept=".gpx"><br><br>
-  <button onclick="processGPX()">Normalize & Visualize</button>
-  <div id="downloadLinks"></div>
-  <div id="map"></div>
-  <canvas id="chart"></canvas>
+    <div class="container">
+        <h1>GPX Route to Track Converter</h1>
+        <p>This tool converts all `<rte>` (route) elements in a GPX file to `<trk>` (track) elements.</p>
+        
+        <input type="file" id="gpxFile" accept=".gpx">
+        <button onclick="convertGpx()">Convert File</button>
+        
+        <p id="status"></p>
+        <div id="download-link"></div>
+    </div>
 
-  <script>
-    let map = L.map('map').setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    <script>
+        async function convertGpx() {
+            const fileInput = document.getElementById('gpxFile');
+            const statusMessage = document.getElementById('status');
+            const downloadLinkDiv = document.getElementById('download-link');
 
-    function haversine(lat1, lon1, lat2, lon2) {
-      const R = 6371000;
-      const toRad = deg => deg * Math.PI / 180;
-      const dLat = toRad(lat2 - lat1);
-      const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
+            statusMessage.textContent = '';
+            downloadLinkDiv.innerHTML = '';
+            downloadLinkDiv.style.display = 'none';
 
-    function parseGPX(xmlText) {
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(xmlText, "application/xml");
-      const trkpts = xmlDoc.getElementsByTagName("trkpt");
-      let points = [];
+            const file = fileInput.files[0];
 
-      for (let pt of trkpts) {
-        const lat = parseFloat(pt.getAttribute("lat"));
-        const lon = parseFloat(pt.getAttribute("lon"));
-        const eleEl = pt.getElementsByTagName("ele")[0];
-        const timeEl = pt.getElementsByTagName("time")[0];
-        const ele = eleEl ? parseFloat(eleEl.textContent) : null;
-        const time = timeEl ? new Date(timeEl.textContent).getTime() : null;
-        points.push({ lat, lon, ele, time });
-      }
-      return points;
-    }
+            if (!file) {
+                statusMessage.textContent = 'Please select a GPX file.';
+                return;
+            }
 
-    function interpolatePoints(p1, p2, interval) {
-      const dist = haversine(p1.lat, p1.lon, p2.lat, p2.lon);
-      const steps = Math.floor(dist / interval);
-      const points = [];
+            statusMessage.textContent = 'Converting...';
 
-      for (let i = 1; i <= steps; i++) {
-        const ratio = i / steps;
-        const lat = p1.lat + (p2.lat - p1.lat) * ratio;
-        const lon = p1.lon + (p2.lon - p1.lon) * ratio;
-        const ele = p1.ele !== null && p2.ele !== null ? p1.ele + (p2.ele - p1.ele) * ratio : null;
-        const time = p1.time !== null && p2.time !== null ? p1.time + (p2.time - p1.time) * ratio : null;
-        points.push({ lat, lon, ele, time });
-      }
-      return points;
-    }
+            try {
+                // Read the file content as a string
+                const gpxText = await file.text();
 
-    function normalizeByDistance(track, interval) {
-      const normalized = [track[0]];
-      for (let i = 1; i < track.length; i++) {
-        const p1 = track[i - 1];
-        const p2 = track[i];
-        const interpolated = interpolatePoints(p1, p2, interval);
-        normalized.push(...interpolated, p2);
-      }
-      return normalized;
-    }
+                // Use DOMParser to parse the XML string
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(gpxText, "text/xml");
 
-    function buildGPX(points) {
-      let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Copilot" xmlns="http://www.topografix.com/GPX/1/1">
-  <trk><name>Normalized Track</name><trkseg>`;
-      for (let pt of points) {
-        gpx += `<trkpt lat="${pt.lat}" lon="${pt.lon}">`;
-        if (pt.ele !== null) gpx += `<ele>${pt.ele.toFixed(2)}</ele>`;
-        if (pt.time !== null) gpx += `<time>${new Date(pt.time).toISOString()}</time>`;
-        gpx += `</trkpt>\n`;
-      }
-      gpx += `</trkseg></trk></gpx>`;
-      return gpx;
-    }
+                // Check for parsing errors
+                if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
+                    throw new Error("Error parsing GPX file. Is it a valid XML file?");
+                }
 
-    function downloadFile(content, filename) {
-      const blob = new Blob([content], { type: "application/gpx+xml" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.textContent = `Download ${filename}`;
-      document.getElementById("downloadLinks").appendChild(link);
-      document.getElementById("downloadLinks").appendChild(document.createElement("br"));
-    }
+                // Get all <rte> elements
+                const routeElements = xmlDoc.getElementsByTagName('rte');
 
-    function plotElevation(points) {
-      const labels = points.map(p => p.time ? new Date(p.time).toLocaleTimeString() : '');
-      const data = points.map(p => p.ele);
-      const ctx = document.getElementById('chart').getContext('2d');
-      new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Elevation (m)',
-            data,
-            borderColor: 'blue',
-            fill: false,
-            tension: 0.1
-          }]
-        },
-        options: {
-          scales: {
-            x: { title: { display: true, text: 'Time' }},
-            y: { title: { display: true, text: 'Elevation (m)' }}
-          }
+                while (routeElements.length > 0) {
+                    const route = routeElements[0]; // Get the first route element
+                    const track = xmlDoc.createElement('trk');
+                    const trackseg = xmlDoc.createElement('trkseg');
+
+                    // Iterate through all child elements (<rtept>) and convert them
+                    const routePoints = route.getElementsByTagName('rtept');
+                    while (routePoints.length > 0) {
+                        const routePoint = routePoints[0]; // Get the first point
+                        const trackPoint = xmlDoc.createElement('trkpt');
+
+                        // Copy all attributes (lat, lon)
+                        for (const attr of routePoint.attributes) {
+                            trackPoint.setAttribute(attr.name, attr.value);
+                        }
+
+                        // Copy all child nodes (ele, time, etc.)
+                        while (routePoint.firstChild) {
+                            trackPoint.appendChild(routePoint.firstChild);
+                        }
+                        
+                        trackseg.appendChild(trackPoint);
+                        routePoint.remove(); // Remove the old route point
+                    }
+
+                    // Append the new track segment and remove the old route
+                    track.appendChild(trackseg);
+                    route.parentNode.replaceChild(track, route);
+                }
+                
+                // Use XMLSerializer to convert the modified XML back to a string
+                const serializer = new XMLSerializer();
+                const newGpxText = serializer.serializeToString(xmlDoc);
+
+                // Create a downloadable link for the new file
+                const blob = new Blob([newGpxText], { type: 'application/gpx+xml' });
+                const url = URL.createObjectURL(blob);
+                
+                const downloadLink = document.createElement('a');
+                downloadLink.href = url;
+                downloadLink.download = file.name.replace('.gpx', '-track.gpx');
+                downloadLink.textContent = 'Download Converted GPX File';
+                
+                downloadLinkDiv.innerHTML = '';
+                downloadLinkDiv.appendChild(downloadLink);
+                downloadLinkDiv.style.display = 'block';
+
+                statusMessage.textContent = 'Conversion successful!';
+
+            } catch (error) {
+                statusMessage.textContent = `Error: ${error.message}`;
+                console.error(error);
+            }
         }
-      });
-    }
-
-    function drawTrackOnMap(points) {
-      const latlngs = points.map(p => [p.lat, p.lon]);
-      const polyline = L.polyline(latlngs, { color: 'red' }).addTo(map);
-      map.fitBounds(polyline.getBounds());
-    }
-
-    async function processGPX() {
-      const file1 = document.getElementById("gpx1").files[0];
-      const file2 = document.getElementById("gpx2").files[0];
-      if (!file1 || !file2) return alert("Please upload both GPX files.");
-
-      const text1 = await file1.text();
-      const text2 = await file2.text();
-
-      const points1 = parseGPX(text1);
-      const points2 = parseGPX(text2);
-
-      const interval = 10; // meters
-      const normalized1 = normalizeByDistance(points1, interval);
-      const normalized2 = normalizeByDistance(points2, interval);
-
-      const gpxOut1 = buildGPX(normalized1);
-      const gpxOut2 = buildGPX(normalized2);
-
-      downloadFile(gpxOut1, "normalized1.gpx");
-      downloadFile(gpxOut2, "normalized2.gpx");
-
-      drawTrackOnMap(normalized1);
-      plotElevation(normalized1);
-    }
-  </script>
+    </script>
 </body>
 </html>
