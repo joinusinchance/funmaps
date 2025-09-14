@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Standardize GPX files</title>
+</head>
+<body>
+  
+  
+  <h2>Upload Two GPX Files</h2>
+  <input type="file" id="gpx1" accept=".gpx"><br><br>
+  <input type="file" id="gpx2" accept=".gpx"><br><br>
+  <button onclick="processGPX()">Normalize Granularity</button>
+  <div id="downloadLinks"></div>
+  <br>
+  Thanks togpx and gpx-parser libraries and Copilot.  
+  <script>
+    function parseGPX(xmlText) {
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlText, "application/xml");
+      const trkpts = xmlDoc.getElementsByTagName("trkpt");
+      let points = [];
+
+      for (let pt of trkpts) {
+        const lat = parseFloat(pt.getAttribute("lat"));
+        const lon = parseFloat(pt.getAttribute("lon"));
+        const timeEl = pt.getElementsByTagName("time")[0];
+        const time = timeEl ? new Date(timeEl.textContent).getTime() : null;
+        points.push({ lat, lon, time });
+      }
+      return points;
+    }
+
+    function resample(points, intervalMs = 5000) {
+      if (!points.length) return [];
+
+      let resampled = [points[0]];
+      let nextTime = points[0].time + intervalMs;
+
+      for (let i = 1; i < points.length; i++) {
+        if (points[i].time >= nextTime) {
+          resampled.push(points[i]);
+          nextTime += intervalMs;
+        }
+      }
+      return resampled;
+    }
+
+    function buildGPX(points) {
+      let gpx = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Copilot" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><name>Normalized Track</name><trkseg>`;
+      for (let pt of points) {
+        gpx += `<trkpt lat="${pt.lat}" lon="${pt.lon}"><time>${new Date(pt.time).toISOString()}</time></trkpt>\n`;
+      }
+      gpx += `</trkseg></trk></gpx>`;
+      return gpx;
+    }
+
+    function downloadFile(content, filename) {
+      const blob = new Blob([content], { type: "application/gpx+xml" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.textContent = `Download ${filename}`;
+      document.getElementById("downloadLinks").appendChild(link);
+      document.getElementById("downloadLinks").appendChild(document.createElement("br"));
+    }
+
+    async function processGPX() {
+      const file1 = document.getElementById("gpx1").files[0];
+      const file2 = document.getElementById("gpx2").files[0];
+      if (!file1 || !file2) return alert("Please upload both GPX files.");
+
+      const text1 = await file1.text();
+      const text2 = await file2.text();
+
+      const points1 = parseGPX(text1);
+      const points2 = parseGPX(text2);
+
+      const normalized1 = resample(points1);
+      const normalized2 = resample(points2);
+
+      const gpxOut1 = buildGPX(normalized1);
+      const gpxOut2 = buildGPX(normalized2);
+
+      downloadFile(gpxOut1, "normalized1.gpx");
+      downloadFile(gpxOut2, "normalized2.gpx");
+    }
+  </script>
+</body>
+</html>
