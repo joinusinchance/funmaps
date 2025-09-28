@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GPX Comparison Tool</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/gpxparser@3.0.7/dist/gpxparser.js"></script> 
+    
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; }
         .container { max-width: 1200px; margin: 0 auto; background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
@@ -15,7 +17,8 @@
         #statsTable th, #statsTable td { border: 1px solid #ddd; padding: 12px; text-align: left; }
         #statsTable th { background-color: #007bff; color: white; }
         #statsTable tr:nth-child(even) { background-color: #f2f2f2; }
-        .gpx-file-info { margin-bottom: 10px; padding: 10px; border-left: 5px solid #007bff; background-color: #e9f7ff; border-radius: 4px; }
+        .error-message { color: #d9534f; padding: 10px; border: 1px solid #d9534f; background-color: #fdd; margin-bottom: 15px; border-radius: 4px; }
+        .loading-message { text-align: center; font-style: italic; color: #555; }
     </style>
 </head>
 <body>
@@ -23,13 +26,10 @@
     <div class="container">
         <h1>🗺️ GPX Elevation Comparison</h1>
 
-        <div class="gpx-file-info">
-            <p><strong>Note:</strong> For simplicity and to create a self-contained example, the file parsing and data extraction logic in this script are **mocked**. A real-world application would require a dedicated JavaScript library (like `GPXParser.js`) and robust file handling to parse actual GPX XML content.</p>
-        </div>
-
         <input type="file" id="fileInput" multiple accept=".gpx">
+        <div id="statusMessage" class="loading-message" style="display:none;">Parsing files...</div>
 
-        <h2 id="chartTitle">Elevation Profile (Time vs. Elevation)</h2>
+        <h2>Elevation Profile (Time vs. Elevation)</h2>
         <div id="chartContainer">
             <canvas id="elevationChart"></canvas>
         </div>
@@ -45,7 +45,8 @@
                 </tr>
             </thead>
             <tbody>
-                </tbody>
+                <tr><td colspan="4">Select one or more GPX files (.gpx) to compare.</td></tr>
+            </tbody>
         </table>
     </div>
 
@@ -53,72 +54,82 @@
         const fileInput = document.getElementById('fileInput');
         const statsTableBody = document.querySelector('#statsTable tbody');
         const chartCanvas = document.getElementById('elevationChart');
+        const statusMessage = document.getElementById('statusMessage');
         let elevationChart;
 
-        // --- Mock Data Generator (Replace with actual GPX parsing) ---
-
         /**
-         * Mocks GPX parsing and statistics extraction.
-         * In a real application, you would use a library like GPXParser.js here.
+         * Parses the GPX file content using GPXParser.js and extracts required data.
          * @param {string} fileName - The name of the file.
-         * @returns {object} Mocked GPX data.
+         * @param {string} gpxContent - The XML content of the GPX file.
+         * @returns {object} Parsed GPX data including stats and chart data.
          */
-        function parseGpx(fileName) {
-            // Generate some random data for demonstration
-            const numPoints = 100;
-            const distance = Math.floor(Math.random() * 50 + 10); // 10 to 60 km
-            const gain = Math.floor(Math.random() * 1000 + 200);   // 200 to 1200 m
-            const durationMinutes = Math.floor(Math.random() * 300 + 60); // 1 to 6 hours
-
-            const dataPoints = [];
-            let currentElevation = 50 + Math.random() * 50; // starting elevation
-            let currentTime = 0; // time in minutes
-
-            for (let i = 0; i < numPoints; i++) {
-                // Mock elevation changes
-                currentElevation += (Math.random() - 0.5) * 10 * (gain / 1000);
-                if (currentElevation < 0) currentElevation = 0; // prevent negative elevation
-                
-                // Mock time increments (more spread out as the trip progresses)
-                currentTime += durationMinutes / numPoints + (Math.random() * 0.5);
-
-                dataPoints.push({
-                    time: currentTime, // time in minutes from start
-                    elevation: Math.round(currentElevation),
-                });
+        function parseGpx(fileName, gpxContent) {
+            const gpx = new gpxParser();
+            try {
+                gpx.parse(gpxContent);
+            } catch (e) {
+                console.error(`Error parsing ${fileName}:`, e);
+                throw new Error(`Invalid GPX format in ${fileName}`);
             }
 
-            // Simple duration formatting
-            const hours = Math.floor(durationMinutes / 60);
-            const minutes = Math.floor(durationMinutes % 60);
+            // GPXParser.js computes statistics on the first track by default
+            const track = gpx.tracks[0];
+            if (!track || !track.points || track.points.length < 2) {
+                throw new Error(`No valid track data found in ${fileName}.`);
+            }
+
+            // 1. Total Distance (meters to km)
+            const distanceKm = (gpx.distance.total / 1000).toFixed(2);
+            
+            // 2. Elevation Gain (using positive elevation from stats)
+            // Note: track.elevation.pos is often calculated based on smoothing and is more accurate than raw point-to-point sums.
+            const elevationGainMeters = Math.floor(gpx.elevation.pos); 
+
+            // 3. Duration (calculated from first and last point timestamps)
+            const startTime = track.points[0].time;
+            const endTime = track.points[track.points.length - 1].time;
+            const durationMs = new Date(endTime).getTime() - new Date(startTime).getTime();
+            const durationHoursTotal = durationMs / (1000 * 60 * 60);
+
+            const hours = Math.floor(durationHoursTotal);
+            const minutes = Math.floor((durationHoursTotal - hours) * 60);
             const formattedDuration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+
+            // 4. Chart Data: Elevation vs. Time (in hours)
+            const chartData = track.points.map((point) => {
+                const pointTimeMs = new Date(point.time).getTime();
+                // Time offset from the start of the track, converted to hours
+                const timeOffsetHours = (pointTimeMs - new Date(startTime).getTime()) / (1000 * 60 * 60);
+
+                return {
+                    x: timeOffsetHours, // Time in hours from start
+                    y: point.ele // Elevation in meters
+                };
+            });
 
             return {
                 name: fileName,
-                distance: distance.toFixed(2),
-                elevationGain: gain,
+                distance: distanceKm,
+                elevationGain: elevationGainMeters,
                 duration: formattedDuration,
-                // Time vs Elevation data for charting
-                chartData: dataPoints.map(p => ({
-                    x: (p.time / 60), // Convert minutes to hours for X-axis
-                    y: p.elevation
-                })),
+                chartData: chartData,
             };
         }
 
-        // --- Charting and Table Logic ---
+        // --- Charting and Table Logic (Unchanged from previous solution) ---
 
         /**
          * Initializes or updates the Chart.js graph.
          * @param {Array} gpxDataArray - Array of parsed GPX data objects.
          */
         function updateChart(gpxDataArray) {
-            // Define colors for the tracks
             const colors = [
                 'rgba(0, 123, 255, 1)',  // Blue
                 'rgba(40, 167, 69, 1)',  // Green
                 'rgba(255, 193, 7, 1)',  // Yellow
-                'rgba(220, 53, 69, 1)'   // Red
+                'rgba(220, 53, 69, 1)',  // Red
+                'rgba(111, 66, 193, 1)', // Purple
+                'rgba(23, 162, 184, 1)'  // Cyan
             ];
 
             const datasets = gpxDataArray.map((gpx, index) => ({
@@ -128,7 +139,7 @@
                 borderWidth: 2,
                 fill: false,
                 tension: 0.1,
-                pointRadius: 0, // No points for a clean line graph
+                pointRadius: 0,
                 parsing: {
                     xAxisKey: 'x', // Time in hours
                     yAxisKey: 'y'  // Elevation in meters
@@ -174,12 +185,10 @@
                 }
             };
 
-            // Destroy previous chart instance if it exists
             if (elevationChart) {
                 elevationChart.destroy();
             }
 
-            // Create new chart instance
             elevationChart = new Chart(chartCanvas, config);
         }
 
@@ -188,7 +197,11 @@
          * @param {Array} gpxDataArray - Array of parsed GPX data objects.
          */
         function updateStatsTable(gpxDataArray) {
-            statsTableBody.innerHTML = ''; // Clear previous data
+            statsTableBody.innerHTML = '';
+            if (gpxDataArray.length === 0) {
+                 statsTableBody.innerHTML = '<tr><td colspan="4">No data to display.</td></tr>';
+                 return;
+            }
             gpxDataArray.forEach(gpx => {
                 const row = statsTableBody.insertRow();
                 row.insertCell().textContent = gpx.name;
@@ -199,50 +212,64 @@
         }
 
         /**
-         * Main handler for file selection.
-         * @param {Event} event - The file input change event.
+         * Main handler for file selection and parsing.
+         * Uses FileReader to asynchronously read each file.
          */
         function handleFiles(event) {
             const files = event.target.files;
             if (files.length === 0) {
-                statsTableBody.innerHTML = '<tr><td colspan="4">No files selected.</td></tr>';
+                statsTableBody.innerHTML = '<tr><td colspan="4">Select one or more GPX files (.gpx) to compare.</td></tr>';
                 if (elevationChart) elevationChart.destroy();
                 return;
             }
-
-            const parsedGpxData = [];
             
-            // Loop through selected files
+            statusMessage.style.display = 'block';
+            statsTableBody.innerHTML = '';
+            
+            const parsedGpxData = [];
+            let filesProcessed = 0;
+
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
-                // In a real app, you would read the file content here:
-                // const reader = new FileReader();
-                // reader.onload = (e) => {
-                //     const gpxContent = e.target.result;
-                //     const data = parseGpx(file.name, gpxContent); // Use actual parser
-                //     parsedGpxData.push(data);
-                //     if (parsedGpxData.length === files.length) {
-                //         updateChart(parsedGpxData);
-                //         updateStatsTable(parsedGpxData);
-                //     }
-                // };
-                // reader.readAsText(file);
-                
-                // --- Mocking file read/parse completion for demo ---
-                const data = parseGpx(file.name);
-                parsedGpxData.push(data);
-            }
+                const reader = new FileReader();
 
-            // Run updates after all files (mocked) are "parsed"
-            updateChart(parsedGpxData);
-            updateStatsTable(parsedGpxData);
+                reader.onload = (e) => {
+                    try {
+                        const gpxContent = e.target.result;
+                        // Use the real GPXParser logic
+                        const data = parseGpx(file.name, gpxContent); 
+                        parsedGpxData.push(data);
+                    } catch (error) {
+                        const errorDiv = document.createElement('div');
+                        errorDiv.className = 'error-message';
+                        errorDiv.textContent = `Error processing ${file.name}: ${error.message}`;
+                        document.querySelector('.container').insertBefore(errorDiv, statusMessage);
+                    } finally {
+                        filesProcessed++;
+                        // Check if all files are processed
+                        if (filesProcessed === files.length) {
+                            statusMessage.style.display = 'none';
+                            updateChart(parsedGpxData);
+                            updateStatsTable(parsedGpxData);
+                        }
+                    }
+                };
+
+                reader.onerror = () => {
+                    alert(`Failed to read file: ${file.name}`);
+                    filesProcessed++;
+                    if (filesProcessed === files.length) {
+                         statusMessage.style.display = 'none';
+                         updateChart(parsedGpxData);
+                         updateStatsTable(parsedGpxData);
+                    }
+                };
+
+                reader.readAsText(file);
+            }
         }
 
-        // Attach event listener to the file input
         fileInput.addEventListener('change', handleFiles);
-
-        // Initial state
-        statsTableBody.innerHTML = '<tr><td colspan="4">Select one or more GPX files (.gpx) to compare.</td></tr>';
     </script>
 </body>
 </html>
