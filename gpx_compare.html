@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GPX Comparison Tool</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="https://unpkg.com/gpxparser@3.0.7/dist/gpxparser.js"></script> 
+    <script src="https://unpkg.com/gpxparser@3.0.7/dist/gpxparser.js"></script>
     
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background-color: #f4f4f9; }
@@ -64,7 +64,15 @@
          * @returns {object} Parsed GPX data including stats and chart data.
          */
         function parseGpx(fileName, gpxContent) {
+            // FIX: Ensure the gpxParser class is globally available before instantiation.
+            // The unpkg CDN should expose the class as 'gpxParser'.
+            if (typeof gpxParser === 'undefined') {
+                throw new Error("gpxParser is not defined. Check the script tag link or network connection.");
+            }
+            
+            // Instantiates the GPXParser class
             const gpx = new gpxParser();
+            
             try {
                 gpx.parse(gpxContent);
             } catch (e) {
@@ -72,7 +80,7 @@
                 throw new Error(`Invalid GPX format in ${fileName}`);
             }
 
-            // GPXParser.js computes statistics on the first track by default
+            // We focus on the data extracted from the parser object
             const track = gpx.tracks[0];
             if (!track || !track.points || track.points.length < 2) {
                 throw new Error(`No valid track data found in ${fileName}.`);
@@ -81,8 +89,7 @@
             // 1. Total Distance (meters to km)
             const distanceKm = (gpx.distance.total / 1000).toFixed(2);
             
-            // 2. Elevation Gain (using positive elevation from stats)
-            // Note: track.elevation.pos is often calculated based on smoothing and is more accurate than raw point-to-point sums.
+            // 2. Elevation Gain
             const elevationGainMeters = Math.floor(gpx.elevation.pos); 
 
             // 3. Duration (calculated from first and last point timestamps)
@@ -98,7 +105,6 @@
             // 4. Chart Data: Elevation vs. Time (in hours)
             const chartData = track.points.map((point) => {
                 const pointTimeMs = new Date(point.time).getTime();
-                // Time offset from the start of the track, converted to hours
                 const timeOffsetHours = (pointTimeMs - new Date(startTime).getTime()) / (1000 * 60 * 60);
 
                 return {
@@ -116,8 +122,7 @@
             };
         }
 
-        // --- Charting and Table Logic (Unchanged from previous solution) ---
-
+        // --- Charting and Table Logic (omitted for brevity, as it's the same) ---
         /**
          * Initializes or updates the Chart.js graph.
          * @param {Array} gpxDataArray - Array of parsed GPX data objects.
@@ -141,8 +146,8 @@
                 tension: 0.1,
                 pointRadius: 0,
                 parsing: {
-                    xAxisKey: 'x', // Time in hours
-                    yAxisKey: 'y'  // Elevation in meters
+                    xAxisKey: 'x', 
+                    yAxisKey: 'y'
                 }
             }));
 
@@ -213,9 +218,11 @@
 
         /**
          * Main handler for file selection and parsing.
-         * Uses FileReader to asynchronously read each file.
          */
         function handleFiles(event) {
+            // Remove previous error messages
+            document.querySelectorAll('.error-message').forEach(el => el.remove());
+
             const files = event.target.files;
             if (files.length === 0) {
                 statsTableBody.innerHTML = '<tr><td colspan="4">Select one or more GPX files (.gpx) to compare.</td></tr>';
@@ -236,7 +243,6 @@
                 reader.onload = (e) => {
                     try {
                         const gpxContent = e.target.result;
-                        // Use the real GPXParser logic
                         const data = parseGpx(file.name, gpxContent); 
                         parsedGpxData.push(data);
                     } catch (error) {
@@ -246,7 +252,6 @@
                         document.querySelector('.container').insertBefore(errorDiv, statusMessage);
                     } finally {
                         filesProcessed++;
-                        // Check if all files are processed
                         if (filesProcessed === files.length) {
                             statusMessage.style.display = 'none';
                             updateChart(parsedGpxData);
