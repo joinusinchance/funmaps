@@ -3,241 +3,192 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPX File Comparator</title>
+    <title>GPX Route Analyzer & Plotter</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; margin: 0; padding: 0; background-color: #f4f7f9; }
-        .container { max-width: 1200px; margin: 20px auto; padding: 20px; background-color: #ffffff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 8px; }
-        header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px; }
-        h1 { color: #333; }
-        .input-area { text-align: center; margin-bottom: 20px; }
-        input[type="file"] { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
-        button { padding: 10px 15px; font-size: 16px; color: #fff; background-color: #007bff; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.3s; }
-        button:hover { background-color: #0056b3; }
-        .comparison-results { display: flex; flex-direction: column; gap: 20px; }
-        .statistics-section { padding: 20px; background-color: #e9ecef; border-radius: 8px; }
-        .file-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 10px; }
-        .stat-card { padding: 15px; background-color: #ffffff; border: 1px solid #dee2e6; border-radius: 8px; }
-        .stat-card h4 { margin-top: 0; color: #007bff; }
-        .map-section, .chart-section { padding: 20px; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        #map { height: 500px; width: 100%; border-radius: 8px; border: 1px solid #dee2e6; }
-        #elevationChart { height: 400px; width: 100%; }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 1200px; margin: auto; }
+        #fileInput { margin-bottom: 20px; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        #statsTable { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        #statsTable th, #statsTable td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #statsTable th { background-color: #f2f2f2; }
+        #chartContainer { margin-top: 40px; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
     </style>
-    <!-- Leaflet CSS and JS for interactive map -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <!-- Leaflet GPX plugin for handling GPX files -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/1.5.1/gpx.min.js"></script>
-    <!-- Chart.js for elevation charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+
     <div class="container">
-        <header>
-            <h1>GPX File Comparator</h1>
-            <p>Select two or more GPX files to compare their tracks on a map, view elevation profiles, and see key statistics.</p>
-        </header>
+        <h1>GPX Route Analyzer</h1>
+        
+        <input type="file" id="fileInput" accept=".gpx" multiple onchange="handleFiles(event)">
+        <p>Select two or more GPX files to plot and compare their elevation profiles.</p>
 
-        <div class="input-area">
-            <input type="file" id="gpxFiles" accept=".gpx" multiple>
-            <button onclick="processFiles()">Compare Files</button>
+        <div id="loadingMessage" style="display:none; color: blue;">Processing files...</div>
+
+        <h2>Route Statistics</h2>
+        <table id="statsTable">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Total Distance (km)</th>
+                    <th>Total Vertical Gain (m)</th>
+                </tr>
+            </thead>
+            <tbody>
+                </tbody>
+        </table>
+
+        <div id="chartContainer">
+            <h2>Elevation Profile</h2>
+            <canvas id="elevationChart"></canvas>
         </div>
-
-        <main class="comparison-results">
-            <div class="statistics-section">
-                <h2>Statistics</h2>
-                <div id="statistics" class="file-stats">
-                    <p>Upload files and click "Compare Files" to see statistics.</p>
-                </div>
-            </div>
-            
-            <div class="chart-section">
-                <h2>Elevation Chart</h2>
-                <canvas id="elevationChart"></canvas>
-            </div>
-
-            <div class="map-section">
-                <h2>Map Comparison</h2>
-                <div id="map"></div>
-            </div>
-        </main>
     </div>
 
     <script>
-        const map = L.map('map').setView([51.505, -0.09], 13);
-        let elevationChart;
-        const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#17a2b8'];
+        // --- Core GPX Analysis Logic (JS Version of Python Code) ---
+        
+        const R = 6371000.0; // Earth's radius in meters
+        let gpxChart = null; // Variable to hold the Chart.js instance
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+        /**
+         * Calculates the 2D distance between two points using the Haversine formula.
+         */
+        function haversine(lat1, lon1, lat2, lon2) {
+            const toRad = (degrees) => degrees * (Math.PI / 180);
 
-        async function processFiles() {
-            const fileInput = document.getElementById('gpxFiles');
-            const files = fileInput.files;
+            const rLat1 = toRad(lat1);
+            const rLon1 = toRad(lon1);
+            const rLat2 = toRad(lat2);
+            const rLon2 = toRad(lon2);
+
+            const dLon = rLon2 - rLon1;
+            const dLat = rLat2 - rLat1;
+
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(rLat1) * Math.cos(rLat2) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; // Distance in meters
+        }
+
+        /**
+         * Parses GPX content (XML string) and calculates distance/elevation data.
+         * Returns an object with stats and plot data (x: distance, y: elevation).
+         */
+        function analyzeGpx(gpxContent, fileName) {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(gpxContent, "text/xml");
             
-            if (files.length < 2) {
-                alert('Please select at least two GPX files.');
-                return;
-            }
-
-            document.getElementById('statistics').innerHTML = '<p>Processing files...</p>';
-            map.eachLayer(layer => {
-                if (layer instanceof L.GPX) {
-                    map.removeLayer(layer);
+            // Try to find the track name in the common places (gpx:trk/gpx:name, etc.)
+            const nameElements = xmlDoc.getElementsByTagName('name');
+            let trackName = fileName;
+            for (let i = 0; i < nameElements.length; i++) {
+                if (nameElements[i].parentNode.tagName.toLowerCase() === 'trk') {
+                    trackName = nameElements[i].textContent;
+                    break;
                 }
-            });
+            }
+
+            const points = [];
+            const trkpts = xmlDoc.getElementsByTagName('trkpt');
             
-            const elevationData = [];
-            const promises = Array.from(files).map((file, index) => 
-                processGpxFile(file, index, elevationData)
-            );
+            for (let i = 0; i < trkpts.length; i++) {
+                const trkpt = trkpts[i];
+                const lat = parseFloat(trkpt.getAttribute('lat'));
+                const lon = parseFloat(trkpt.getAttribute('lon'));
+                const eleElement = trkpt.getElementsByTagName('ele')[0];
+                const ele = eleElement ? parseFloat(eleElement.textContent) : NaN;
+                
+                if (!isNaN(lat) && !isNaN(lon)) {
+                    points.push({ lat, lon, ele });
+                }
+            }
             
-            try {
-                await Promise.all(promises);
-            } catch (error) {
-                document.getElementById('statistics').innerHTML = `<p style="color: red;">Error processing files: ${error.message}</p>`;
-                console.error(error);
-                return;
+            if (points.length === 0) {
+                throw new Error(`No valid points found in ${fileName}`);
             }
 
-            const hasElevation = elevationData.some(d => d.elevations.length > 0);
-            if (!hasElevation) {
-                document.getElementById('statistics').innerHTML += '<p style="color: orange;">Note: The elevation chart is empty because the uploaded GPX files do not contain elevation data. Please use a file that includes it or use a tool like GPS Visualizer to add it.</p>';
+            // Simple elevation interpolation (Forward-fill, then Backward-fill)
+            let lastValidEle = points[0].ele;
+            for (const p of points) {
+                if (!isNaN(p.ele)) lastValidEle = p.ele;
+                else if (!isNaN(lastValidEle)) p.ele = lastValidEle;
+            }
+            let firstValidEle = points[points.length - 1].ele;
+            for (let i = points.length - 1; i >= 0; i--) {
+                const p = points[i];
+                if (!isNaN(p.ele)) firstValidEle = p.ele;
+                else if (!isNaN(firstValidEle)) p.ele = firstValidEle;
+            }
+            // Final fallback to 0 if all elevations are missing
+            if (isNaN(points[0].ele)) points.forEach(p => p.ele = 0);
+
+            // Calculation loop
+            const plotData = [];
+            let totalVerticalGain = 0.0;
+            let cumulativeDistance = 0.0;
+            
+            plotData.push({ x: 0.0, y: points[0].ele }); // Start point
+
+            for (let i = 1; i < points.length; i++) {
+                const p1 = points[i - 1];
+                const p2 = points[i];
+
+                const distance2D = haversine(p1.lat, p1.lon, p2.lat, p2.lon);
+                const elevationDiff = p2.ele - p1.ele;
+                const distance3D = Math.sqrt(distance2D * distance2D + elevationDiff * elevationDiff);
+
+                cumulativeDistance += distance3D;
+
+                if (elevationDiff > 0) {
+                    totalVerticalGain += elevationDiff;
+                }
+                
+                plotData.push({ 
+                    x: cumulativeDistance / 1000, // Distance in km
+                    y: p2.ele                   // Elevation in meters
+                });
             }
 
-            if (hasElevation) {
-                updateElevationChart(elevationData);
-            } else if (elevationChart) {
-                elevationChart.destroy();
-            }
-        }
-
-        function processGpxFile(file, index, elevationData) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const gpxData = e.target.result;
-                    
-                    const gpx = new L.GPX(gpxData, {
-                        async: true,
-                        marker_options: {
-                            startIconUrl: null, endIconUrl: null, shadowUrl: null
-                        },
-                        polyline_options: {
-                            color: colors[index % colors.length],
-                            opacity: 0.75,
-                            weight: 5,
-                            lineCap: 'round'
-                        }
-                    }).on('loaded', function(e) {
-                        const gpxLayer = e.target;
-                        
-                        if (index === 0) {
-                            map.fitBounds(gpxLayer.getBounds());
-                        } else {
-                            map.fitBounds(map.getBounds().extend(gpxLayer.getBounds()));
-                        }
-
-                        displayStatistics(file.name, gpxLayer, index);
-                        
-                        // FIX: Correctly access trackpoints array
-                        const trackpoints = gpxLayer.get_trackpoints();
-                        const distances = [];
-                        const elevations = [];
-                        let totalDistanceMeters = 0;
-
-                        // FIX: Loop through the trackpoints to collect data
-                        for (let i = 0; i < trackpoints.length; i++) {
-                            const point = trackpoints[i];
-                            
-                            // Check if elevation data exists before pushing
-                            if (point.meta && typeof point.meta.ele !== 'undefined') {
-                                elevations.push(point.meta.ele);
-                            } else {
-                                elevations.push(null); // Use null for missing elevation points
-                            }
-
-                            if (i > 0) {
-                                const prevPoint = trackpoints[i-1];
-                                const distanceMeters = map.distance(
-                                    L.latLng(prevPoint.lat, prevPoint.lon),
-                                    L.latLng(point.lat, point.lon)
-                                );
-                                totalDistanceMeters += distanceMeters;
-                            }
-                            distances.push(totalDistanceMeters / 1000);
-                        }
-
-                        elevationData.push({
-                            label: file.name,
-                            distances,
-                            elevations,
-                            color: colors[index % colors.length]
-                        });
-
-                        resolve();
-                    }).addTo(map);
-                };
-                reader.onerror = reject;
-                reader.readAsText(file);
-            });
-        }
-
-        function displayStatistics(fileName, gpxLayer, index) {
             const stats = {
-                distance_km: (gpxLayer.get_distance() / 1000).toFixed(2),
-                distance_mi: (gpxLayer.get_distance() * 0.000621371).toFixed(2),
-                elevation_gain: gpxLayer.get_elevation_gain().toFixed(0),
-                elevation_loss: gpxLayer.get_elevation_loss().toFixed(0),
-                min_elevation: gpxLayer.get_elevation_min().toFixed(0),
-                max_elevation: gpxLayer.get_elevation_max().toFixed(0)
+                'Name': trackName,
+                'Total Distance (km)': cumulativeDistance / 1000,
+                'Total Vertical Gain (m)': totalVerticalGain,
             };
-            
-            const statsDiv = document.getElementById('statistics');
-            if (statsDiv.innerHTML.includes('Processing files...')) {
-                statsDiv.innerHTML = '';
-            }
 
-            const card = document.createElement('div');
-            card.className = 'stat-card';
-            card.style.borderLeft = `5px solid ${colors[index % colors.length]}`;
-            card.innerHTML = `
-                <h4>${fileName}</h4>
-                <p><strong>Distance:</strong> ${stats.distance_km} km / ${stats.distance_mi} miles</p>
-                <p><strong>Elevation Gain:</strong> ${stats.elevation_gain} m</p>
-                <p><strong>Elevation Loss:</strong> ${stats.elevation_loss} m</p>
-                <p><strong>Min Elevation:</strong> ${stats.min_elevation} m</p>
-                <p><strong>Max Elevation:</strong> ${stats.max_elevation} m</p>
-            `;
-            statsDiv.appendChild(card);
+            return { stats, plotData, fileName };
         }
 
-        function updateElevationChart(data) {
-            const ctx = document.getElementById('elevationChart').getContext('2d');
-            
-            if (elevationChart) {
-                elevationChart.destroy();
+        // --- UI and Charting Functions ---
+
+        /**
+         * Cleans up the previous chart and renders a new one using Chart.js.
+         */
+        function renderChart(results) {
+            if (gpxChart) {
+                gpxChart.destroy();
             }
 
-            const datasets = data.map(track => {
-                const chartData = track.distances.map((distance, i) => ({
-                    x: distance,
-                    y: track.elevations[i]
-                }));
+            const ctx = document.getElementById('elevationChart').getContext('2d');
+            const colors = ['#007bff', '#dc3545', '#ffc107', '#28a745', '#6f42c1', '#17a2b8']; // Chart colors
+
+            const datasets = results.map((result, index) => {
+                const color = colors[index % colors.length];
                 return {
-                    label: track.label,
-                    data: chartData,
-                    borderColor: track.color,
-                    backgroundColor: 'transparent',
-                    pointRadius: 0,
+                    label: result.stats.Name,
+                    data: result.plotData,
+                    borderColor: color,
+                    backgroundColor: 'rgba(0, 0, 0, 0)', // Transparent fill
                     borderWidth: 2,
-                    fill: false,
-                    tension: 0.4,
-                    spanGaps: true // FIX: Ensures lines don't break on missing data points
+                    pointRadius: 0, // Hide points for a smoother line
+                    tension: 0.1, // Slight curve
+                    parsing: false, // Use pre-processed x/y values
+                    showLine: true
                 };
             });
 
-            elevationChart = new Chart(ctx, {
+            gpxChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     datasets: datasets
@@ -260,9 +211,100 @@
                                 text: 'Elevation (m)'
                             }
                         }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    if (label) {
+                                        let point = context.raw;
+                                        return `${label}: ${point.y.toFixed(2)}m @ ${point.x.toFixed(2)}km`;
+                                    }
+                                    return '';
+                                }
+                            }
+                        }
                     }
                 }
             });
+            // Adjust canvas height after chart creation for better appearance
+            document.getElementById('elevationChart').style.height = '400px'; 
+        }
+
+        /**
+         * Updates the HTML table with calculated statistics.
+         */
+        function updateStatsTable(results) {
+            const tbody = document.querySelector('#statsTable tbody');
+            tbody.innerHTML = ''; // Clear previous results
+
+            for (const result of results) {
+                const stats = result.stats;
+                const row = tbody.insertRow();
+                
+                row.insertCell().textContent = stats.Name;
+                row.insertCell().textContent = stats['Total Distance (km)'].toFixed(2);
+                row.insertCell().textContent = stats['Total Vertical Gain (m)'].toFixed(2);
+            }
+        }
+
+        /**
+         * Main function to handle file selection and processing.
+         */
+        function handleFiles(event) {
+            const files = event.target.files;
+            const loadingMessage = document.getElementById('loadingMessage');
+            
+            if (files.length === 0) return;
+
+            loadingMessage.style.display = 'block';
+            let gpxResults = [];
+            let filesProcessed = 0;
+            
+            // Use Promise to manage asynchronous file reading
+            const processFile = (file) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const result = analyzeGpx(e.target.result, file.name);
+                            resolve(result);
+                        } catch (error) {
+                            reject(`Error processing ${file.name}: ${error.message}`);
+                        }
+                    };
+                    reader.onerror = () => reject(`Failed to read file: ${file.name}`);
+                    reader.readAsText(file);
+                });
+            };
+
+            // Process all files concurrently
+            const processingPromises = Array.from(files).map(processFile);
+
+            Promise.allSettled(processingPromises)
+                .then(results => {
+                    loadingMessage.style.display = 'none';
+                    gpxResults = results
+                        .filter(res => res.status === 'fulfilled')
+                        .map(res => res.value);
+
+                    if (gpxResults.length > 0) {
+                        updateStatsTable(gpxResults);
+                        renderChart(gpxResults);
+                    } else {
+                        alert("No valid GPX files were processed.");
+                        updateStatsTable([]); // Clear table
+                        if (gpxChart) gpxChart.destroy(); // Clear chart
+                    }
+
+                    results.forEach(res => {
+                        if (res.status === 'rejected') {
+                            console.error(res.reason);
+                            // Optionally alert the user about specific file errors
+                        }
+                    });
+                });
         }
     </script>
 </body>
