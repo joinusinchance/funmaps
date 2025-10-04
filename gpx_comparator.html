@@ -80,7 +80,7 @@
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(gpxContent, "text/xml");
             
-            // Try to find the track name in the common places (gpx:trk/gpx:name, etc.)
+            // Try to find the track name
             const nameElements = xmlDoc.getElementsByTagName('name');
             let trackName = fileName;
             for (let i = 0; i < nameElements.length; i++) {
@@ -121,7 +121,6 @@
                 if (!isNaN(p.ele)) firstValidEle = p.ele;
                 else if (!isNaN(firstValidEle)) p.ele = firstValidEle;
             }
-            // Final fallback to 0 if all elevations are missing
             if (isNaN(points[0].ele)) points.forEach(p => p.ele = 0);
 
             // Calculation loop
@@ -167,7 +166,7 @@
          */
         function renderChart(results) {
             if (gpxChart) {
-                gpxChart.destroy();
+                gpxChart.destroy(); // Destroy the old chart instance
             }
 
             const ctx = document.getElementById('elevationChart').getContext('2d');
@@ -179,11 +178,11 @@
                     label: result.stats.Name,
                     data: result.plotData,
                     borderColor: color,
-                    backgroundColor: 'rgba(0, 0, 0, 0)', // Transparent fill
+                    backgroundColor: 'rgba(0, 0, 0, 0)',
                     borderWidth: 2,
-                    pointRadius: 0, // Hide points for a smoother line
-                    tension: 0.1, // Slight curve
-                    parsing: false, // Use pre-processed x/y values
+                    pointRadius: 0,
+                    tension: 0.2, // Smoother line
+                    parsing: false,
                     showLine: true
                 };
             });
@@ -198,7 +197,9 @@
                     maintainAspectRatio: false,
                     scales: {
                         x: {
-                            type: 'linear',
+                            // The crucial fix: explicitly define the x-axis type as 'linear'
+                            // so it treats the distance values as continuous numbers, not categories.
+                            type: 'linear', 
                             position: 'bottom',
                             title: {
                                 display: true,
@@ -228,7 +229,6 @@
                     }
                 }
             });
-            // Adjust canvas height after chart creation for better appearance
             document.getElementById('elevationChart').style.height = '400px'; 
         }
 
@@ -259,10 +259,7 @@
             if (files.length === 0) return;
 
             loadingMessage.style.display = 'block';
-            let gpxResults = [];
-            let filesProcessed = 0;
             
-            // Use Promise to manage asynchronous file reading
             const processFile = (file) => {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
@@ -279,13 +276,12 @@
                 });
             };
 
-            // Process all files concurrently
             const processingPromises = Array.from(files).map(processFile);
 
             Promise.allSettled(processingPromises)
                 .then(results => {
                     loadingMessage.style.display = 'none';
-                    gpxResults = results
+                    const gpxResults = results
                         .filter(res => res.status === 'fulfilled')
                         .map(res => res.value);
 
@@ -294,14 +290,13 @@
                         renderChart(gpxResults);
                     } else {
                         alert("No valid GPX files were processed.");
-                        updateStatsTable([]); // Clear table
-                        if (gpxChart) gpxChart.destroy(); // Clear chart
+                        updateStatsTable([]);
+                        if (gpxChart) gpxChart.destroy();
                     }
 
                     results.forEach(res => {
                         if (res.status === 'rejected') {
                             console.error(res.reason);
-                            // Optionally alert the user about specific file errors
                         }
                     });
                 });
