@@ -12,7 +12,22 @@
         #statsTable { width: 100%; border-collapse: collapse; margin-top: 20px; }
         #statsTable th, #statsTable td { border: 1px solid #ddd; padding: 8px; text-align: left; }
         #statsTable th { background-color: #f2f2f2; }
-        #chartContainer { margin-top: 40px; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
+
+        /* Key CSS Fix: Ensure the chart container has defined dimensions */
+        #chartContainer { 
+            margin-top: 40px; 
+            border: 1px solid #ddd; 
+            padding: 15px; 
+            border-radius: 5px;
+            /* Use a fixed height or min-height for the container */
+            height: 400px; /* Set a standard height for the chart area */
+            width: 100%;
+        }
+        /* Ensure canvas fills its container */
+        #elevationChart {
+            width: 100% !important;
+            height: 100% !important;
+        }
     </style>
 </head>
 <body>
@@ -45,42 +60,30 @@
     </div>
 
     <script>
-        // --- Core GPX Analysis Logic (JS Version of Python Code) ---
+        // --- Core GPX Analysis Logic ---
         
-        const R = 6371000.0; // Earth's radius in meters
-        let gpxChart = null; // Variable to hold the Chart.js instance
+        const R = 6371000.0; 
+        let gpxChart = null; 
 
-        /**
-         * Calculates the 2D distance between two points using the Haversine formula.
-         */
         function haversine(lat1, lon1, lat2, lon2) {
             const toRad = (degrees) => degrees * (Math.PI / 180);
-
             const rLat1 = toRad(lat1);
             const rLon1 = toRad(lon1);
             const rLat2 = toRad(lat2);
             const rLon2 = toRad(lon2);
-
             const dLon = rLon2 - rLon1;
             const dLat = rLat2 - rLat1;
-
             const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
                       Math.cos(rLat1) * Math.cos(rLat2) *
                       Math.sin(dLon / 2) * Math.sin(dLon / 2);
             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-            return R * c; // Distance in meters
+            return R * c; 
         }
 
-        /**
-         * Parses GPX content (XML string) and calculates distance/elevation data.
-         * Returns an object with stats and plot data (x: distance, y: elevation).
-         */
         function analyzeGpx(gpxContent, fileName) {
             const parser = new DOMParser();
             const xmlDoc = parser.parseFromString(gpxContent, "text/xml");
             
-            // Try to find the track name
             const nameElements = xmlDoc.getElementsByTagName('name');
             let trackName = fileName;
             for (let i = 0; i < nameElements.length; i++) {
@@ -109,7 +112,7 @@
                 throw new Error(`No valid points found in ${fileName}`);
             }
 
-            // Simple elevation interpolation (Forward-fill, then Backward-fill)
+            // Elevation interpolation
             let lastValidEle = points[0].ele;
             for (const p of points) {
                 if (!isNaN(p.ele)) lastValidEle = p.ele;
@@ -128,7 +131,7 @@
             let totalVerticalGain = 0.0;
             let cumulativeDistance = 0.0;
             
-            plotData.push({ x: 0.0, y: points[0].ele }); // Start point
+            plotData.push({ x: 0.0, y: points[0].ele }); 
 
             for (let i = 1; i < points.length; i++) {
                 const p1 = points[i - 1];
@@ -145,8 +148,8 @@
                 }
                 
                 plotData.push({ 
-                    x: cumulativeDistance / 1000, // Distance in km
-                    y: p2.ele                   // Elevation in meters
+                    x: cumulativeDistance / 1000, 
+                    y: p2.ele                   
                 });
             }
 
@@ -166,11 +169,11 @@
          */
         function renderChart(results) {
             if (gpxChart) {
-                gpxChart.destroy(); // Destroy the old chart instance
+                gpxChart.destroy(); 
             }
 
             const ctx = document.getElementById('elevationChart').getContext('2d');
-            const colors = ['#007bff', '#dc3545', '#ffc107', '#28a745', '#6f42c1', '#17a2b8']; // Chart colors
+            const colors = ['#007bff', '#dc3545', '#ffc107', '#28a745', '#6f42c1', '#17a2b8']; 
 
             const datasets = results.map((result, index) => {
                 const color = colors[index % colors.length];
@@ -181,7 +184,7 @@
                     backgroundColor: 'rgba(0, 0, 0, 0)',
                     borderWidth: 2,
                     pointRadius: 0,
-                    tension: 0.2, // Smoother line
+                    tension: 0.2, 
                     parsing: false,
                     showLine: true
                 };
@@ -194,11 +197,15 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
+                    // The bug fix: Maintain aspect ratio or rely on explicit CSS sizing.
+                    // Setting maintainAspectRatio to true (the default) can sometimes fix the issue 
+                    // when height is not specified, but since we have a fixed container height, 
+                    // explicitly setting a ratio is more reliable than letting it be 'false'.
+                    maintainAspectRatio: true, 
+                    aspectRatio: 2.5, // Optional: gives a wide, sensible chart shape.
                     scales: {
                         x: {
-                            // The crucial fix: explicitly define the x-axis type as 'linear'
-                            // so it treats the distance values as continuous numbers, not categories.
+                            // CRITICAL FIX CONFIRMATION: Must be 'linear' for continuous x-data.
                             type: 'linear', 
                             position: 'bottom',
                             title: {
@@ -229,7 +236,6 @@
                     }
                 }
             });
-            document.getElementById('elevationChart').style.height = '400px'; 
         }
 
         /**
@@ -237,7 +243,7 @@
          */
         function updateStatsTable(results) {
             const tbody = document.querySelector('#statsTable tbody');
-            tbody.innerHTML = ''; // Clear previous results
+            tbody.innerHTML = ''; 
 
             for (const result of results) {
                 const stats = result.stats;
