@@ -70,7 +70,7 @@
                         <option value="https://joinusinchance.github.io/funmaps/new_york_marathon.gpx">New York City Marathon</option>
                         <option value="https://joinusinchance.github.io/funmaps/sydney_marathon.gpx">Sydney Marathon</option>
                     </select>
-                    <p class="text-xs text-blue-600 mt-2 italic">Select a route above to add it to the comparison chart.</p>
+                    <p id="feedbackMessage" class="text-xs text-blue-600 mt-2 italic">Select a route above to add it to the comparison chart.</p>
                 </div>
             </div>
 
@@ -150,6 +150,7 @@
         const viewType = document.getElementById('viewType');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const presetSelect = document.getElementById('presetSelect');
+        const feedbackMessage = document.getElementById('feedbackMessage');
 
         // Handlers
         dropZone.addEventListener('click', () => fileInput.click());
@@ -161,7 +162,27 @@
             handleFiles(e.dataTransfer.files);
         });
         fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-        presetSelect.addEventListener('change', (e) => handlePreset(e.target.value, e.target.options[e.target.selectedIndex].text));
+        
+        presetSelect.addEventListener('change', (e) => {
+            const url = e.target.value;
+            const name = e.target.options[e.target.selectedIndex].text;
+            
+            // Check if route already exists
+            const exists = tracks.some(t => t.url === url || t.name === name);
+            if (exists) {
+                feedbackMessage.textContent = `"${name}" is already in the comparison.`;
+                feedbackMessage.classList.replace('text-blue-600', 'text-amber-600');
+                setTimeout(() => {
+                    feedbackMessage.textContent = 'Select a route above to add it to the comparison chart.';
+                    feedbackMessage.classList.replace('text-amber-600', 'text-blue-600');
+                }, 3000);
+                presetSelect.selectedIndex = 0;
+                return;
+            }
+
+            handlePreset(url, name);
+            presetSelect.selectedIndex = 0; // Reset dropdown
+        });
 
         metricBtn.addEventListener('click', () => { toggleUnits(true); });
         imperialBtn.addEventListener('click', () => { toggleUnits(false); });
@@ -173,11 +194,11 @@
             renderUI();
         });
 
-        // Load Defaults (Athens and Boston 2025 as requested in previous turns)
+        // Load Defaults (Athens and Boston as requested)
         window.onload = async () => {
             const defaults = [
                 { url: 'https://joinusinchance.github.io/funmaps/athens_marathon.gpx', name: 'Athens Marathon' },
-                { url: 'https://joinusinchance.github.io/funmaps/Boston_Marathon_2025.gpx', name: 'Boston Marathon 2025' }
+                { url: 'https://joinusinchance.github.io/funmaps/boston_marathon.gpx', name: 'Boston Marathon' }
             ];
 
             for (const item of defaults) {
@@ -192,6 +213,7 @@
                     const text = await response.text();
                     const trackData = parseGPX(text, name);
                     if (trackData) {
+                        trackData.url = url; // Store URL to check for duplicates
                         trackData.color = palette[tracks.length % palette.length];
                         tracks.push(trackData);
                         renderUI();
