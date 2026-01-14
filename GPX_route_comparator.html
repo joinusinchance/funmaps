@@ -46,43 +46,60 @@
 
         <!-- Controls -->
         <section class="p-6 space-y-6">
-            <div id="dropZone" class="drop-zone p-10 rounded-xl text-center cursor-pointer">
-                <div class="flex flex-col items-center">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Drop Zone -->
+                <div id="dropZone" class="drop-zone p-10 rounded-xl text-center cursor-pointer h-full flex flex-col justify-center items-center">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-slate-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    <span class="text-slate-600 font-medium">Click to upload or drag GPX files here</span>
-                    <span class="text-slate-400 text-xs mt-1">Supports multiple .gpx files</span>
+                    <span class="text-slate-600 font-medium">Click or drag GPX files</span>
+                    <input type="file" id="fileInput" class="hidden" multiple accept=".gpx">
                 </div>
-                <input type="file" id="fileInput" class="hidden" multiple accept=".gpx">
+
+                <!-- Preset Routes Dropdown -->
+                <div class="flex flex-col justify-center p-6 bg-blue-50 rounded-xl border border-blue-100">
+                    <label for="presetSelect" class="block text-sm font-bold text-blue-900 mb-2">Add a Major Marathon</label>
+                    <select id="presetSelect" class="w-full text-sm font-medium bg-white border border-blue-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="" disabled selected>Select a preset route...</option>
+                        <option value="https://joinusinchance.github.io/funmaps/athens_marathon.gpx">Athens Marathon</option>
+                        <option value="https://joinusinchance.github.io/funmaps/tokyo_marathon.gpx">Tokyo Marathon</option>
+                        <option value="https://joinusinchance.github.io/funmaps/boston_marathon.gpx">Boston Marathon</option>
+                        <option value="https://joinusinchance.github.io/funmaps/london_marathon.gpx">London Marathon</option>
+                        <option value="https://joinusinchance.github.io/funmaps/berlin_marathon.gpx">Berlin Marathon</option>
+                        <option value="https://joinusinchance.github.io/funmaps/chicago_marathon.gpx">Chicago Marathon</option>
+                        <option value="https://joinusinchance.github.io/funmaps/new_york_marathon.gpx">New York City Marathon</option>
+                        <option value="https://joinusinchance.github.io/funmaps/sydney_marathon.gpx">Sydney Marathon</option>
+                    </select>
+                    <p class="text-xs text-blue-600 mt-2 italic">Select a route above to add it to the comparison chart.</p>
+                </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <!-- Unit Toggle -->
                 <div class="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                    <span class="text-sm font-semibold text-slate-700">Units</span>
+                    <span class="text-xs font-semibold text-slate-700 uppercase tracking-wider">Units</span>
                     <div class="flex bg-white rounded-md border border-slate-200 p-1">
-                        <button id="metricBtn" class="px-3 py-1 text-xs font-medium rounded transition-colors bg-blue-500 text-white">Metric</button>
-                        <button id="imperialBtn" class="px-3 py-1 text-xs font-medium rounded transition-colors text-slate-600 hover:bg-slate-100">Imperial</button>
+                        <button id="metricBtn" class="px-2 py-1 text-[10px] font-bold rounded transition-colors bg-blue-500 text-white">METRIC</button>
+                        <button id="imperialBtn" class="px-2 py-1 text-[10px] font-bold rounded transition-colors text-slate-600 hover:bg-slate-100">IMPERIAL</button>
                     </div>
                 </div>
 
                 <!-- View Type -->
                 <div class="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                    <span class="text-sm font-semibold text-slate-700">Data Type</span>
-                    <select id="viewType" class="text-xs font-medium bg-white border border-slate-200 rounded px-2 py-1 outline-none">
-                        <option value="profile">Elevation Profile</option>
-                        <option value="aggregate">Aggregate Gain (Total)</option>
+                    <span class="text-xs font-semibold text-slate-700 uppercase tracking-wider">Data</span>
+                    <select id="viewType" class="text-xs font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none">
+                        <option value="profile">Profile</option>
+                        <option value="aggregate">Total Gain</option>
                     </select>
                 </div>
 
                 <!-- Normalization -->
                 <div class="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-                    <span class="text-sm font-semibold text-slate-700">Normalize Elevation</span>
-                    <select id="normType" class="text-xs font-medium bg-white border border-slate-200 rounded px-2 py-1 outline-none">
-                        <option value="none">None (Absolute)</option>
-                        <option value="start">Align Start (Zeroed)</option>
-                        <option value="end">Align End (Zeroed)</option>
+                    <span class="text-xs font-semibold text-slate-700 uppercase tracking-wider">Norm</span>
+                    <select id="normType" class="text-xs font-bold bg-white border border-slate-200 rounded px-2 py-1 outline-none">
+                        <option value="none">Absolute</option>
+                        <option value="start">Align Start</option>
+                        <option value="end">Align End</option>
                     </select>
                 </div>
             </div>
@@ -102,7 +119,7 @@
 
         <!-- Empty State -->
         <div id="emptyState" class="p-20 text-center text-slate-400 italic">
-            No files uploaded yet.
+            No routes added yet. Select a preset or upload a GPX file.
         </div>
     </div>
 
@@ -114,8 +131,8 @@
         const palette = [
             '#ef4444', // Red-500
             '#3b82f6', // Blue-500
-            '#10b981', // Emerald-500 (Green)
-            '#f59e0b', // Amber-500 (Orange)
+            '#10b981', // Emerald-500
+            '#f59e0b', // Amber-500
             '#ec4899', // Pink-500
             '#8b5cf6', // Violet-500
             '#06b6d4', // Cyan-500
@@ -132,8 +149,9 @@
         const normType = document.getElementById('normType');
         const viewType = document.getElementById('viewType');
         const clearAllBtn = document.getElementById('clearAllBtn');
+        const presetSelect = document.getElementById('presetSelect');
 
-        // Drag and Drop Handlers
+        // Handlers
         dropZone.addEventListener('click', () => fileInput.click());
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('active'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
@@ -143,18 +161,19 @@
             handleFiles(e.dataTransfer.files);
         });
         fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+        presetSelect.addEventListener('change', (e) => handlePreset(e.target.value, e.target.options[e.target.selectedIndex].text));
 
-        // Settings Handlers
         metricBtn.addEventListener('click', () => { toggleUnits(true); });
         imperialBtn.addEventListener('click', () => { toggleUnits(false); });
         normType.addEventListener('change', () => updateChart());
         viewType.addEventListener('change', () => updateChart());
         clearAllBtn.addEventListener('click', () => {
             tracks = [];
+            presetSelect.selectedIndex = 0;
             renderUI();
         });
 
-        // Load Default GPX on Init
+        // Load Defaults (Athens and Boston 2025 as requested in previous turns)
         window.onload = async () => {
             const defaults = [
                 { url: 'https://joinusinchance.github.io/funmaps/athens_marathon.gpx', name: 'Athens Marathon' },
@@ -162,29 +181,25 @@
             ];
 
             for (const item of defaults) {
-                try {
-                    const response = await fetch(item.url);
-                    if (response.ok) {
-                        const text = await response.text();
-                        const trackData = parseGPX(text, item.name);
-                        if (trackData) {
-                            trackData.color = palette[tracks.length % palette.length];
-                            tracks.push(trackData);
-                        }
-                    }
-                } catch (err) {
-                    console.error(`Failed to load default GPX: ${item.name}`, err);
-                }
+                await handlePreset(item.url, item.name);
             }
-            renderUI();
         };
 
-        function toggleUnits(metric) {
-            useMetric = metric;
-            metricBtn.className = metric ? 'px-3 py-1 text-xs font-medium rounded bg-blue-500 text-white' : 'px-3 py-1 text-xs font-medium rounded text-slate-600 hover:bg-slate-100';
-            imperialBtn.className = !metric ? 'px-3 py-1 text-xs font-medium rounded bg-blue-500 text-white' : 'px-3 py-1 text-xs font-medium rounded text-slate-600 hover:bg-slate-100';
-            updateChart();
-            renderFileList();
+        async function handlePreset(url, name) {
+            try {
+                const response = await fetch(url);
+                if (response.ok) {
+                    const text = await response.text();
+                    const trackData = parseGPX(text, name);
+                    if (trackData) {
+                        trackData.color = palette[tracks.length % palette.length];
+                        tracks.push(trackData);
+                        renderUI();
+                    }
+                }
+            } catch (err) {
+                console.error(`Failed to load: ${name}`, err);
+            }
         }
 
         async function handleFiles(files) {
@@ -298,7 +313,6 @@
                             yValue = p.elevation * eleFactor;
                         }
                     }
-                    
                     return {
                         x: (p.distance * distFactor).toFixed(2),
                         y: parseFloat(yValue.toFixed(1))
@@ -382,6 +396,14 @@
                 `;
                 fileListContainer.appendChild(div);
             });
+        }
+
+        function toggleUnits(metric) {
+            useMetric = metric;
+            metricBtn.className = metric ? 'px-2 py-1 text-[10px] font-bold rounded bg-blue-500 text-white' : 'px-2 py-1 text-[10px] font-bold rounded text-slate-600 hover:bg-slate-100';
+            imperialBtn.className = !metric ? 'px-2 py-1 text-[10px] font-bold rounded bg-blue-500 text-white' : 'px-2 py-1 text-[10px] font-bold rounded text-slate-600 hover:bg-slate-100';
+            updateChart();
+            renderFileList();
         }
 
         window.removeTrack = (id) => {
