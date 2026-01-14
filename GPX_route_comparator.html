@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPX Route Comparator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --bg: #f8fafc;
+        }
+        body {
+            background-color: var(--bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        .drop-zone {
+            border: 2px dashed #cbd5e1;
+            transition: all 0.3s ease;
+        }
+        .drop-zone.active {
+            border-color: var(--primary);
+            background-color: #eff6ff;
+        }
+        .chart-container {
+            position: relative;
+            height: 45vh;
+            min-height: 350px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <!-- Header -->
+        <header class="p-6 border-b border-slate-100">
+            <h1 class="text-2xl font-bold text-slate-800">GPX Comparator</h1>
+            <p class="text-slate-500 text-sm">Compare distance and elevation profiles of multiple routes.</p>
+        </header>
+
+        <!-- Controls -->
+        <section class="p-6 space-y-6">
+            <div id="dropZone" class="drop-zone p-10 rounded-xl text-center cursor-pointer">
+                <div class="flex flex-col items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-slate-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span class="text-slate-600 font-medium">Click to upload or drag GPX files here</span>
+                    <span class="text-slate-400 text-xs mt-1">Supports multiple .gpx files</span>
+                </div>
+                <input type="file" id="fileInput" class="hidden" multiple accept=".gpx">
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Unit Toggle -->
+                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                    <span class="text-sm font-semibold text-slate-700">Units</span>
+                    <div class="flex bg-white rounded-md border border-slate-200 p-1">
+                        <button id="metricBtn" class="px-3 py-1 text-xs font-medium rounded transition-colors bg-blue-500 text-white">Metric</button>
+                        <button id="imperialBtn" class="px-3 py-1 text-xs font-medium rounded transition-colors text-slate-600 hover:bg-slate-100">Imperial</button>
+                    </div>
+                </div>
+
+                <!-- View Type -->
+                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                    <span class="text-sm font-semibold text-slate-700">Data Type</span>
+                    <select id="viewType" class="text-xs font-medium bg-white border border-slate-200 rounded px-2 py-1 outline-none">
+                        <option value="profile">Elevation Profile</option>
+                        <option value="aggregate">Aggregate Gain (Total)</option>
+                    </select>
+                </div>
+
+                <!-- Normalization -->
+                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                    <span class="text-sm font-semibold text-slate-700">Normalize Elevation</span>
+                    <select id="normType" class="text-xs font-medium bg-white border border-slate-200 rounded px-2 py-1 outline-none">
+                        <option value="none">None (Absolute)</option>
+                        <option value="start">Align Start (Zeroed)</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- Chart Area -->
+        <div id="chartSection" class="p-6 hidden">
+            <div class="chart-container">
+                <canvas id="elevationChart"></canvas>
+            </div>
+            
+            <!-- File List / Legend -->
+            <div id="fileList" class="mt-6 space-y-2">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="p-20 text-center text-slate-400 italic">
+            No files uploaded yet.
+        </div>
+    </div>
+
+    <script>
+        let tracks = [];
+        let useMetric = true;
+        let chart = null;
+
+        // Fixed color palette: Red and Blue for the first two, then random
+        const palette = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6'];
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const chartSection = document.getElementById('chartSection');
+        const emptyState = document.getElementById('emptyState');
+        const fileListContainer = document.getElementById('fileList');
+        const metricBtn = document.getElementById('metricBtn');
+        const imperialBtn = document.getElementById('imperialBtn');
+        const normType = document.getElementById('normType');
+        const viewType = document.getElementById('viewType');
+
+        // Drag and Drop Handlers
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('active'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('active');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+        // Settings Handlers
+        metricBtn.addEventListener('click', () => { toggleUnits(true); });
+        imperialBtn.addEventListener('click', () => { toggleUnits(false); });
+        normType.addEventListener('change', () => updateChart());
+        viewType.addEventListener('change', () => updateChart());
+
+        function toggleUnits(metric) {
+            useMetric = metric;
+            metricBtn.className = metric ? 'px-3 py-1 text-xs font-medium rounded bg-blue-500 text-white' : 'px-3 py-1 text-xs font-medium rounded text-slate-600 hover:bg-slate-100';
+            imperialBtn.className = !metric ? 'px-3 py-1 text-xs font-medium rounded bg-blue-500 text-white' : 'px-3 py-1 text-xs font-medium rounded text-slate-600 hover:bg-slate-100';
+            updateChart();
+            renderFileList();
+        }
+
+        async function handleFiles(files) {
+            for (let file of files) {
+                if (file.name.toLowerCase().endsWith('.gpx')) {
+                    const text = await file.text();
+                    const trackData = parseGPX(text, file.name);
+                    if (trackData) {
+                        trackData.color = palette[tracks.length % palette.length];
+                        tracks.push(trackData);
+                    }
+                }
+            }
+            if (tracks.length > 0) {
+                chartSection.classList.remove('hidden');
+                emptyState.classList.add('hidden');
+                updateChart();
+                renderFileList();
+            }
+        }
+
+        function parseGPX(xmlText, fileName) {
+            const parser = new DOMParser();
+            const gpx = parser.parseFromString(xmlText, "text/xml");
+            const points = gpx.querySelectorAll('trkpt');
+            
+            let trackPoints = [];
+            let totalDist = 0;
+            let totalGain = 0;
+
+            for (let i = 0; i < points.length; i++) {
+                const lat = parseFloat(points[i].getAttribute('lat'));
+                const lon = parseFloat(points[i].getAttribute('lon'));
+                const ele = parseFloat(points[i].querySelector('ele')?.textContent || 0);
+
+                if (i > 0) {
+                    const prevLat = parseFloat(points[i-1].getAttribute('lat'));
+                    const prevLon = parseFloat(points[i-1].getAttribute('lon'));
+                    const prevEle = parseFloat(points[i-1].querySelector('ele')?.textContent || 0);
+                    
+                    totalDist += calculateDistance(prevLat, prevLon, lat, lon);
+                    
+                    const diff = ele - prevEle;
+                    if (diff > 0) totalGain += diff;
+                }
+
+                trackPoints.push({
+                    distance: totalDist, 
+                    elevation: ele,
+                    aggregateGain: totalGain
+                });
+            }
+
+            if (trackPoints.length === 0) return null;
+
+            return {
+                id: Math.random().toString(36).substr(2, 9),
+                name: fileName.replace('.gpx', ''),
+                points: trackPoints,
+                totalDistance: totalDist,
+                totalGain: totalGain
+            };
+        }
+
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; 
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                    Math.cos(φ1) * Math.cos(φ2) *
+                    Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c; 
+        }
+
+        function updateChart() {
+            const ctx = document.getElementById('elevationChart').getContext('2d');
+            const distFactor = useMetric ? 0.001 : 0.000621371;
+            const eleFactor = useMetric ? 1 : 3.28084;
+            const distUnit = useMetric ? 'km' : 'mi';
+            const eleUnit = useMetric ? 'm' : 'ft';
+            const isAggregate = viewType.value === 'aggregate';
+
+            const datasets = tracks.map(track => {
+                const startEle = track.points[0].elevation;
+                const data = track.points.map(p => {
+                    let yValue;
+                    if (isAggregate) {
+                        yValue = p.aggregateGain * eleFactor;
+                    } else {
+                        yValue = normType.value === 'start' 
+                            ? (p.elevation - startEle) * eleFactor 
+                            : p.elevation * eleFactor;
+                    }
+                    
+                    return {
+                        x: (p.distance * distFactor).toFixed(2),
+                        y: yValue.toFixed(1)
+                    };
+                });
+
+                return {
+                    label: track.name,
+                    data: data,
+                    borderColor: track.color,
+                    borderWidth: 2.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    fill: false, // Disabled fill as requested
+                    tension: 0.1
+                };
+            });
+
+            if (chart) chart.destroy();
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index',
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            title: { display: true, text: `Distance (${distUnit})`, font: { weight: 'bold' } }
+                        },
+                        y: {
+                            title: { 
+                                display: true, 
+                                text: isAggregate ? `Total Gain (${eleUnit})` : `Elevation (${eleUnit})`, 
+                                font: { weight: 'bold' } 
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ${context.parsed.y} ${eleUnit}`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderFileList() {
+            fileListContainer.innerHTML = '';
+            const eleFactor = useMetric ? 1 : 3.28084;
+            const eleUnit = useMetric ? 'm' : 'ft';
+
+            tracks.forEach((track) => {
+                const dist = useMetric 
+                    ? (track.totalDistance / 1000).toFixed(2) + ' km'
+                    : (track.totalDistance * 0.000621371).toFixed(2) + ' mi';
+                
+                const gain = (track.totalGain * eleFactor).toFixed(0) + ' ' + eleUnit;
+                
+                const div = document.createElement('div');
+                div.className = "flex items-center justify-between p-3 bg-slate-50 rounded-lg border-l-4";
+                div.style.borderLeftColor = track.color;
+                div.innerHTML = `
+                    <div class="flex flex-col">
+                        <span class="text-sm font-bold text-slate-700">${track.name}</span>
+                        <span class="text-xs text-slate-500">${dist} | ${gain} total gain</span>
+                    </div>
+                    <button onclick="removeTrack('${track.id}')" class="text-slate-400 hover:text-red-500 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                `;
+                fileListContainer.appendChild(div);
+            });
+        }
+
+        window.removeTrack = (id) => {
+            tracks = tracks.filter(t => t.id !== id);
+            if (tracks.length === 0) {
+                chartSection.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+            } else {
+                updateChart();
+                renderFileList();
+            }
+        };
+    </script>
+</body>
+</html>
