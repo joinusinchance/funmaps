@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Length Calculator</title>
+    <!-- Leaflet CSS for Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --accent: #eff6ff;
+            --danger: #dc2626;
+            --success: #16a34a;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 500px;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            margin-bottom: 16px;
+        }
+
+        h1 { font-size: 1.5rem; margin: 0 0 16px 0; text-align: center; color: var(--primary); }
+        h2 { font-size: 1.1rem; margin: 0 0 12px 0; color: var(--text); }
+
+        .input-group { margin-bottom: 15px; }
+        .inline-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        label { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 6px; color: #64748b; }
+        
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            outline: none;
+            background: white;
+        }
+
+        #map {
+            height: 200px;
+            width: 100%;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            border: 1px solid #e2e8f0;
+            z-index: 1;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: 600;
+            width: 100%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .btn-secondary {
+            background: #f1f5f9;
+            color: var(--text);
+            border: 1px solid #e2e8f0;
+        }
+
+        .btn-danger {
+            background: #fee2e2;
+            color: var(--danger);
+            border: 1px solid #fecaca;
+        }
+
+        .btn:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+        }
+
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .preset-btn {
+            font-size: 0.7rem;
+            padding: 6px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            cursor: pointer;
+            color: #475569;
+            transition: all 0.2s;
+        }
+
+        .preset-btn:hover {
+            background: var(--accent);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .result-box {
+            background: var(--accent);
+            border: 1px solid #dbeafe;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .result-value { font-size: 2rem; font-weight: 800; color: var(--primary); display: block; }
+
+        .table-container {
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px;
+            border-bottom: 2px solid #e2e8f0;
+            color: #64748b;
+        }
+
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        tr:last-child td { border-bottom: none; }
+        .noon-row { background-color: #f0f9ff; font-weight: bold; color: var(--primary); }
+        .selected-date-row { background-color: #fef9c3; font-weight: bold; }
+
+        .change-neg { color: var(--success); }
+        .change-pos { color: var(--danger); }
+
+        .extreme-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .extreme-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 12px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        .extreme-title {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 8px;
+            display: block;
+        }
+        .extreme-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .stat-group { margin-bottom: 8px; }
+        .stat-label { font-size: 0.65rem; color: #94a3b8; display: block; }
+        .stat-val { font-size: 1rem; font-weight: 700; color: var(--text); }
+        .stat-val.highlight { color: var(--primary); }
+
+        .coord-display {
+            font-family: monospace;
+            font-size: 0.75rem;
+            text-align: center;
+            margin-top: 8px;
+            color: #94a3b8;
+        }
+
+        #shareMsg {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            display: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="card">
+            <h1>Shadow Finder</h1>
+            <div class="input-group">
+                <label>Object Height (cm)</label>
+                <input type="number" id="objHeight" value="50">
+            </div>
+            <div class="input-group">
+                <label>Date</label>
+                <input type="date" id="datePicker">
+            </div>
+            <button class="btn btn-secondary" id="shareBtn">Copy Shareable Link</button>
+        </div>
+
+        <div class="card">
+            <button class="btn" id="geoBtn">Find My Location</button>
+            
+            <div class="input-group">
+                <label>Saved Locations</label>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                    <select id="savedLocations">
+                        <option value="">-- Choose saved location --</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-secondary" id="saveLocBtn" style="margin:0; flex:1">Save Current</button>
+                    <button class="btn btn-danger" id="deleteLocBtn" style="margin:0; flex:1">Delete Selected</button>
+                </div>
+            </div>
+
+            <div class="preset-grid">
+                <button class="preset-btn" onclick="updateLocation(90, 0, true)">North Pole</button>
+                <button class="preset-btn" onclick="updateLocation(23.436, 0, true)">T. Cancer</button>
+                <button class="preset-btn" onclick="updateLocation(0, 0, true)">Equator</button>
+                <button class="preset-btn" onclick="updateLocation(-23.436, 0, true)">T. Capricorn</button>
+                <button class="preset-btn" onclick="updateLocation(-90, 0, true)">South Pole</button>
+                <button class="preset-btn" onclick="updateLocation(51.5074, -0.1278, true)">London</button>
+            </div>
+            <div id="map"></div>
+            
+            <div class="inline-inputs" style="margin-top: 15px;">
+                <div class="input-group" style="margin-bottom:0">
+                    <label>Latitude</label>
+                    <input type="number" id="latInput" step="0.0001" value="56.0370">
+                </div>
+                <div class="input-group" style="margin-bottom:0">
+                    <label>Longitude</label>
+                    <input type="number" id="lonInput" step="0.0001" value="-2.8270">
+                </div>
+            </div>
+            <div class="coord-display" id="coords">Lat: 56.0370, Lon: -2.8270</div>
+        </div>
+
+        <div class="card result-box">
+            <label>Shortest Shadow (Solar Noon)</label>
+            <span class="result-value" id="shadowResult">--</span>
+            <div id="solarNoonTime" style="font-size: 0.85rem; color: #64748b;"></div>
+        </div>
+
+        <div class="card">
+            <h2>Solstice Timeline</h2>
+            <div class="extreme-container">
+                <div class="extreme-card">
+                    <span class="extreme-title">Shortest Shadow</span>
+                    <div class="extreme-stat">
+                        <div class="stat-group">
+                            <span class="stat-label">Since Last</span>
+                            <span class="stat-val" id="sinceShortest">--</span>
+                        </div>
+                        <div class="stat-group">
+                            <span class="stat-label">Until Next</span>
+                            <span class="stat-val highlight" id="untilShortest">--</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="extreme-card">
+                    <span class="extreme-title">Longest Shadow</span>
+                    <div class="extreme-stat">
+                        <div class="stat-group">
+                            <span class="stat-label">Since Last</span>
+                            <span class="stat-val" id="sinceLongest">--</span>
+                        </div>
+                        <div class="stat-group">
+                            <span class="stat-label">Until Next</span>
+                            <span class="stat-val highlight" id="untilLongest">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>7-Day Noon Comparison</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Noon Elev.</th>
+                            <th>Shadow</th>
+                            <th>Change</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dailyTable"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Hourly Breakdown</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Elev.</th>
+                            <th>Shadow</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hourlyTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="shareMsg">Link copied to clipboard!</div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const heightInput = document.getElementById('objHeight');
+        const dateInput = document.getElementById('datePicker');
+        const latInput = document.getElementById('latInput');
+        const lonInput = document.getElementById('lonInput');
+        const geoBtn = document.getElementById('geoBtn');
+        const saveLocBtn = document.getElementById('saveLocBtn');
+        const deleteLocBtn = document.getElementById('deleteLocBtn');
+        const savedLocSelect = document.getElementById('savedLocations');
+        const shareBtn = document.getElementById('shareBtn');
+        const shareMsg = document.getElementById('shareMsg');
+        
+        const shadowDisplay = document.getElementById('shadowResult');
+        const noonTimeDisplay = document.getElementById('solarNoonTime');
+        const dailyTable = document.getElementById('dailyTable');
+        const hourlyTable = document.getElementById('hourlyTable');
+        const coordsDisplay = document.getElementById('coords');
+        
+        const sinceShortest = document.getElementById('sinceShortest');
+        const untilShortest = document.getElementById('untilShortest');
+        const sinceLongest = document.getElementById('sinceLongest');
+        const untilLongest = document.getElementById('untilLongest');
+
+        const STORAGE_KEY = 'shadow_locations_v1';
+        let currentLat = 56.0370, currentLon = -2.8270;
+
+        // Initialize App
+        function init() {
+            // Check for URL parameters (Sharing)
+            const params = new URLSearchParams(window.location.search);
+            if (params.has('lat')) currentLat = parseFloat(params.get('lat'));
+            if (params.has('lon')) currentLon = parseFloat(params.get('lon'));
+            if (params.has('h')) heightInput.value = params.get('h');
+            if (params.has('d')) dateInput.value = params.get('d');
+            else dateInput.value = new Date().toISOString().split('T')[0];
+
+            latInput.value = currentLat.toFixed(4);
+            lonInput.value = currentLon.toFixed(4);
+            
+            loadSavedLocations();
+            calculate();
+        }
+
+        const map = L.map('map').setView([currentLat, currentLon], 10);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        let marker = L.marker([currentLat, currentLon], { draggable: true }).addTo(map);
+
+        function updateLocation(lat, lon, moveMap = false, fromManualInput = false) {
+            currentLat = parseFloat(lat); 
+            currentLon = parseFloat(lon);
+            marker.setLatLng([currentLat, currentLon]);
+            if (moveMap) map.setView([currentLat, currentLon], moveMap === true ? 13 : map.getZoom());
+            if (!fromManualInput) {
+                latInput.value = currentLat.toFixed(4);
+                lonInput.value = currentLon.toFixed(4);
+            }
+            coordsDisplay.innerText = `Lat: ${currentLat.toFixed(4)}, Lon: ${currentLon.toFixed(4)}`;
+            calculate();
+        }
+
+        // --- Storage & Sharing ---
+
+        function getStoredData() {
+            try {
+                const data = localStorage.getItem(STORAGE_KEY);
+                return data ? JSON.parse(data) : [];
+            } catch (e) {
+                console.error("LocalStorage error:", e);
+                return [];
+            }
+        }
+
+        function setStoredData(data) {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+                return true;
+            } catch (e) {
+                console.error("LocalStorage error:", e);
+                return false;
+            }
+        }
+
+        function loadSavedLocations() {
+            const saved = getStoredData();
+            savedLocSelect.innerHTML = '<option value="">-- Choose saved location --</option>';
+            saved.forEach((loc, index) => {
+                const opt = document.createElement('option');
+                opt.value = index;
+                opt.textContent = loc.name;
+                savedLocSelect.appendChild(opt);
+            });
+        }
+
+        saveLocBtn.onclick = () => {
+            const name = prompt("Enter a name for this location:");
+            if (!name) return;
+            const saved = getStoredData();
+            saved.push({ name, lat: currentLat, lon: currentLon });
+            if (setStoredData(saved)) {
+                loadSavedLocations();
+                savedLocSelect.value = saved.length - 1;
+            } else {
+                alert("Failed to save location. Storage may be full or disabled.");
+            }
+        };
+
+        deleteLocBtn.onclick = () => {
+            const idx = savedLocSelect.value;
+            if (idx === "") return;
+            if (!confirm("Delete this saved location?")) return;
+            
+            const saved = getStoredData();
+            saved.splice(idx, 1);
+            setStoredData(saved);
+            loadSavedLocations();
+        };
+
+        savedLocSelect.onchange = (e) => {
+            const idx = e.target.value;
+            if (idx === "") return;
+            const saved = getStoredData();
+            const loc = saved[idx];
+            if (loc) updateLocation(loc.lat, loc.lon, true);
+        };
+
+        shareBtn.onclick = () => {
+            const baseUrl = window.location.origin + window.location.pathname;
+            const url = `${baseUrl}?lat=${currentLat.toFixed(4)}&lon=${currentLon.toFixed(4)}&h=${heightInput.value}&d=${dateInput.value}`;
+            
+            const tempInput = document.createElement("input");
+            tempInput.value = url;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+
+            shareMsg.style.display = "block";
+            setTimeout(() => shareMsg.style.display = "none", 2000);
+        };
+
+        // --- Calculation Logic ---
+
+        function getSolarAltitude(lat, lon, date, hourFraction) {
+            const start = new Date(date.getFullYear(), 0, 0);
+            const diff = date - start;
+            const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const decl = 23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear + 284));
+            const declRad = decl * Math.PI / 180;
+            const latRad = lat * Math.PI / 180;
+            const b = (2 * Math.PI / 364) * (dayOfYear - 81);
+            const eqTime = 9.87 * Math.sin(2 * b) - 7.53 * Math.cos(b) - 1.5 * Math.sin(b);
+            const solarTime = hourFraction + (lon * 4 / 60) + (eqTime / 60);
+            const hourAngle = (solarTime - 12) * 15;
+            const hrAngleRad = hourAngle * Math.PI / 180;
+            const sinAlt = Math.sin(latRad) * Math.sin(declRad) + 
+                           Math.cos(latRad) * Math.cos(declRad) * Math.cos(hrAngleRad);
+            return Math.asin(sinAlt) * 180 / Math.PI;
+        }
+
+        function getNoonData(lat, lon, date) {
+            const start = new Date(date.getFullYear(), 0, 0);
+            const diff = date - start;
+            const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const decl = 23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear + 284));
+            const elev = 90 - Math.abs(lat - decl);
+            const b = (2 * Math.PI / 364) * (dayOfYear - 81);
+            const eqTime = 9.87 * Math.sin(2 * b) - 7.53 * Math.cos(b) - 1.5 * Math.sin(b);
+            const noonUTC = 12 - (lon * 4 / 60) - (eqTime / 60);
+            return { elev, noonUTC, decl };
+        }
+
+        function getShadowLength(h, elev) {
+            if (elev <= 0) return null;
+            return h / Math.tan(elev * Math.PI / 180);
+        }
+
+        function formatShadowValue(shadow) {
+            if (shadow === null) return "No Sun";
+            return shadow > 1000 ? (shadow/100).toFixed(2)+' m' : shadow.toFixed(1)+' cm';
+        }
+
+        function calculateExtremes(lat, selectedDate) {
+            const currentYear = selectedDate.getFullYear();
+            const msPerDay = 86400000;
+
+            let sDate = new Date(currentYear, 5, 21);
+            let wDate = new Date(currentYear, 11, 21);
+            if (lat < 0) [sDate, wDate] = [wDate, sDate];
+
+            const processStat = (targetDate, sinceEl, untilEl) => {
+                let past = new Date(targetDate);
+                let future = new Date(targetDate);
+                
+                if (selectedDate > targetDate) {
+                    future.setFullYear(future.getFullYear() + 1);
+                } else {
+                    past.setFullYear(past.getFullYear() - 1);
+                }
+
+                const daysSince = Math.floor((selectedDate - past) / msPerDay);
+                const daysUntil = Math.ceil((future - selectedDate) / msPerDay);
+
+                sinceEl.innerText = `${daysSince}d`;
+                untilEl.innerText = `${daysUntil}d`;
+            };
+
+            processStat(sDate, sinceShortest, untilShortest);
+            processStat(wDate, sinceLongest, untilLongest);
+        }
+
+        function calculate() {
+            const h = parseFloat(heightInput.value) || 0;
+            const selectedDate = new Date(dateInput.value);
+            if (isNaN(selectedDate.getTime())) return;
+
+            calculateExtremes(currentLat, selectedDate);
+
+            const currentNoon = getNoonData(currentLat, currentLon, selectedDate);
+            const currentShadowVal = getShadowLength(h, currentNoon.elev);
+            shadowDisplay.innerText = formatShadowValue(currentShadowVal);
+            
+            const nH = Math.floor(currentNoon.noonUTC);
+            const nM = Math.floor((currentNoon.noonUTC % 1) * 60);
+            noonTimeDisplay.innerText = `Solar noon at ${nH.toString().padStart(2,'0')}:${nM.toString().padStart(2,'0')} Local`;
+
+            dailyTable.innerHTML = "";
+            let prevShadow = null;
+            const dStart = new Date(selectedDate);
+            dStart.setDate(selectedDate.getDate() - 4);
+            prevShadow = getShadowLength(h, getNoonData(currentLat, currentLon, dStart).elev);
+
+            for (let i = -3; i <= 3; i++) {
+                const d = new Date(selectedDate);
+                d.setDate(selectedDate.getDate() + i);
+                const noon = getNoonData(currentLat, currentLon, d);
+                const currentShadow = getShadowLength(h, noon.elev);
+                
+                let changeStr = "--", changeClass = "";
+                if (currentShadow !== null && prevShadow !== null) {
+                    const diff = currentShadow - prevShadow;
+                    changeStr = `${diff >= 0 ? '+' : ''}${diff.toFixed(1)} cm`;
+                    changeClass = diff < 0 ? "change-neg" : (diff > 0 ? "change-pos" : "");
+                }
+
+                const row = document.createElement('tr');
+                if (i === 0) row.className = 'selected-date-row';
+                row.innerHTML = `
+                    <td>${d.toLocaleDateString(undefined, {month: 'short', day: 'numeric'})}</td>
+                    <td>${noon.elev.toFixed(1)}°</td>
+                    <td>${formatShadowValue(currentShadow)}</td>
+                    <td class="${changeClass}">${changeStr}</td>
+                `;
+                dailyTable.appendChild(row);
+                prevShadow = currentShadow;
+            }
+
+            hourlyTable.innerHTML = "";
+            for (let hr = 0; hr <= 23; hr++) {
+                const elev = getSolarAltitude(currentLat, currentLon, selectedDate, hr);
+                if (elev > 0) {
+                    const row = document.createElement('tr');
+                    if (hr === Math.round(currentNoon.noonUTC)) row.className = 'noon-row';
+                    row.innerHTML = `
+                        <td>${hr.toString().padStart(2,'0')}:00</td>
+                        <td>${elev.toFixed(1)}°</td>
+                        <td>${formatShadowValue(getShadowLength(h, elev))}</td>
+                    `;
+                    hourlyTable.appendChild(row);
+                }
+            }
+        }
+
+        // Map Listeners
+        marker.on('dragend', (e) => updateLocation(e.target.getLatLng().lat, e.target.getLatLng().lng));
+        map.on('click', (e) => updateLocation(e.latlng.lat, e.latlng.lng));
+
+        geoBtn.onclick = () => {
+            if (!navigator.geolocation) return alert("Geolocation not supported");
+            geoBtn.disabled = true;
+            geoBtn.innerText = "Locating...";
+            navigator.geolocation.getCurrentPosition((position) => {
+                updateLocation(position.coords.latitude, position.coords.longitude, true);
+                geoBtn.disabled = false;
+                geoBtn.innerText = "Find My Location";
+            }, (err) => {
+                alert("Location access denied or unavailable.");
+                geoBtn.disabled = false;
+                geoBtn.innerText = "Find My Location";
+            }, { enableHighAccuracy: true });
+        };
+
+        latInput.oninput = lonInput.oninput = () => {
+            const lat = parseFloat(latInput.value), lon = parseFloat(lonInput.value);
+            if (!isNaN(lat) && !isNaN(lon)) updateLocation(lat, lon, true, true);
+        };
+        [heightInput, dateInput].forEach(el => el.oninput = calculate);
+        
+        init();
+    </script>
+</body>
+</html>
+
