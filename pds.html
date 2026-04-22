@@ -1,206 +1,217 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PDR vs GPS Tracker</title>
+    <title>Pro PDR Navigator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        #map { height: 400px; width: 100%; border-radius: 1.5rem; z-index: 1; }
-        .stat-card { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(8px); }
+        #map { height: 350px; width: 100%; border-radius: 1.5rem; z-index: 1; }
+        .reading-mono { font-family: ui-monospace, monospace; }
+        .active-glow { box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen">
 
     <div class="max-w-xl mx-auto p-4 space-y-4">
-        <header class="flex justify-between items-center py-4">
+        <header class="flex justify-between items-center py-2">
             <div>
-                <h1 class="text-xl font-black tracking-tighter">PDR<span class="text-blue-500">LAB</span></h1>
-                <p class="text-[10px] text-slate-500 uppercase font-bold">Dead Reckoning vs GPS</p>
+                <h1 class="text-2xl font-black tracking-tighter italic">PDR<span class="text-emerald-500">PRO</span></h1>
+                <p id="calib-status" class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Calibration: Pending</p>
             </div>
-            <div id="status-tag" class="px-3 py-1 rounded-full bg-slate-800 text-[10px] font-bold text-slate-400">STANDBY</div>
+            <div id="alt-badge" class="bg-blue-500/10 border border-blue-500/20 px-3 py-1 rounded-full text-[10px] font-bold text-blue-400">
+                BARO: <span id="baro-text">-- hPa</span>
+            </div>
         </header>
 
         <div id="map" class="shadow-2xl border border-slate-800"></div>
 
+        <!-- Dynamic Metrics -->
+        <div class="grid grid-cols-3 gap-2">
+            <div class="bg-slate-900 p-3 rounded-2xl border border-slate-800 text-center">
+                <div class="text-[9px] text-slate-500 uppercase font-bold mb-1">Step Length</div>
+                <div id="stride-val" class="reading-mono text-lg font-bold text-emerald-400">0.75m</div>
+            </div>
+            <div class="bg-slate-900 p-3 rounded-2xl border border-slate-800 text-center">
+                <div class="text-[9px] text-slate-500 uppercase font-bold mb-1">Rel. Alt</div>
+                <div id="rel-alt" class="reading-mono text-lg font-bold text-blue-400">+0.0m</div>
+            </div>
+            <div class="bg-slate-900 p-3 rounded-2xl border border-slate-800 text-center">
+                <div class="text-[9px] text-slate-500 uppercase font-bold mb-1">Drift</div>
+                <div id="drift-val" class="reading-mono text-lg font-bold text-red-400">0.0m</div>
+            </div>
+        </div>
+
         <!-- Controls -->
-        <div id="controls" class="grid grid-cols-2 gap-3">
-            <button id="init-btn" class="col-span-2 bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-900/20">
-                1. Initialize Sensors
-            </button>
-            <button id="start-btn" disabled class="bg-emerald-600 disabled:opacity-30 py-3 rounded-xl font-bold text-sm">
-                2. Start "GO"
-            </button>
-            <button id="reset-btn" class="bg-slate-800 py-3 rounded-xl font-bold text-sm">
-                Reset
-            </button>
-        </div>
-
-        <!-- Real-time Stats -->
-        <div class="grid grid-cols-2 gap-3">
-            <div class="stat-card p-4 rounded-2xl border border-slate-800">
-                <div class="text-[10px] text-slate-500 uppercase font-bold mb-1">Steps Detected</div>
-                <div id="step-count" class="text-2xl font-mono font-bold text-emerald-400">0</div>
+        <div class="bg-slate-900 p-4 rounded-3xl border border-slate-800 space-y-4">
+            <div class="flex gap-2">
+                <button id="init-btn" class="flex-1 bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-bold transition-all text-sm">
+                    1. Sync Sensors
+                </button>
+                <button id="go-btn" disabled class="flex-1 bg-emerald-600 disabled:opacity-20 py-3 rounded-xl font-bold transition-all text-sm">
+                    2. START GO
+                </button>
             </div>
-            <div id="drift-card" class="stat-card p-4 rounded-2xl border border-slate-800">
-                <div class="text-[10px] text-slate-500 uppercase font-bold mb-1">Drift Error</div>
-                <div id="drift-val" class="text-2xl font-mono font-bold text-red-400">0.0m</div>
-            </div>
-            <div class="stat-card p-4 rounded-2xl border border-slate-800">
-                <div class="text-[10px] text-slate-500 uppercase font-bold mb-1">PDR Distance</div>
-                <div id="pdr-dist" class="text-lg font-mono font-bold text-blue-400">0.0m</div>
-            </div>
-            <div class="stat-card p-4 rounded-2xl border border-slate-800">
-                <div class="text-[10px] text-slate-500 uppercase font-bold mb-1">Heading</div>
-                <div id="heading-val" class="text-lg font-mono font-bold text-white">0°</div>
+            
+            <div id="calib-box" class="hidden text-[11px] bg-slate-950 p-3 rounded-xl border border-slate-800 text-slate-400">
+                <div class="flex justify-between mb-1">
+                    <span>Stride Calibration</span>
+                    <span id="calib-progress">0%</span>
+                </div>
+                <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div id="calib-bar" class="bg-emerald-500 h-full transition-all" style="width: 0%"></div>
+                </div>
+                <p class="mt-2 text-[9px] italic">Walk 10 steps naturally after clicking GO to calibrate stride length via GPS.</p>
             </div>
         </div>
 
-        <div class="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 text-[10px] text-slate-500 leading-relaxed">
-            <span class="text-blue-400 font-bold">Blue Path:</span> PDR estimated using 0.75m step length.<br>
-            <span class="text-red-400 font-bold">Red Path:</span> Raw GPS tracking.<br>
-            <p class="mt-2 italic">Hold phone steady in front of you for best results.</p>
-        </div>
+        <button onclick="location.reload()" class="w-full py-2 text-slate-600 text-[10px] uppercase font-black tracking-widest hover:text-slate-400">Reset System</button>
     </div>
 
     <script>
-        // Configuration
-        const STEP_THRESHOLD = 12.5; // Acceleration magnitude to count a step
-        const STEP_LENGTH = 0.75;    // Estimated meters per step
-        
+        // State Management
         let map, gpsPath, pdrPath;
-        let lastGpsCoord = null;
-        let currentPdrCoord = null;
         let isRunning = false;
+        let isCalibrating = false;
+        let startGpsCoord = null;
+        let currentPdrCoord = null;
+        let currentGpsCoord = null;
+        
+        // PDR Variables
         let steps = 0;
         let heading = 0;
+        let strideLength = 0.75; 
+        let basePressure = null;
         let lastAccelMag = 0;
-        let pdrDistance = 0;
+        let calibSteps = [];
+        
+        // Configuration
+        const STEP_THRESHOLD = 13.0; 
 
-        // Initialize Map
         function initMap(lat, lon) {
-            map = L.map('map').setView([lat, lon], 19);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(map);
-
-            gpsPath = L.polyline([], {color: '#ef4444', weight: 3, opacity: 0.8}).addTo(map);
-            pdrPath = L.polyline([], {color: '#3b82f6', weight: 3, dashArray: '5, 10'}).addTo(map);
+            map = L.map('map', { zoomControl: false }).setView([lat, lon], 19);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+            gpsPath = L.polyline([], {color: '#ef4444', weight: 3, opacity: 0.6}).addTo(map);
+            pdrPath = L.polyline([], {color: '#10b981', weight: 4}).addTo(map);
         }
 
-        // Math Helpers
-        function getDestinationPoint(lat, lon, brng, dist) {
-            const R = 6378137; // Earth's Radius in meters
-            const d = dist / R;
-            const brngRad = brng * Math.PI / 180;
-            const lat1 = lat * Math.PI / 180;
-            const lon1 = lon * Math.PI / 180;
-
-            const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brngRad));
-            const lon2 = lon1 + Math.atan2(Math.sin(brngRad) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
-
-            return {
-                lat: lat2 * 180 / Math.PI,
-                lng: lon2 * 180 / Math.PI
-            };
-        }
-
-        function calculateDistance(c1, c2) {
-            if (!c1 || !c2) return 0;
-            return map.distance([c1.lat, c1.lng], [c2.lat, c2.lng]);
-        }
-
-        // Sensors
-        async function startSensors() {
+        async function initSensors() {
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
                 await DeviceOrientationEvent.requestPermission();
             }
 
-            navigator.geolocation.getCurrentPosition((pos) => {
+            // Start Barometer if available
+            if ('PressureSensor' in window) {
+                const sensor = new PressureSensor({frequency: 1});
+                sensor.onreading = () => {
+                    const p = sensor.pressure;
+                    document.getElementById('baro-text').innerText = p.toFixed(1) + " hPa";
+                    if (basePressure === null) basePressure = p;
+                    // Formula for relative altitude from pressure: 44330 * (1 - (p/p0)^(1/5.255))
+                    const diff = 44330 * (1 - Math.pow(p/basePressure, 1/5.255));
+                    document.getElementById('rel-alt').innerText = (diff >= 0 ? "+" : "") + diff.toFixed(1) + "m";
+                };
+                sensor.start();
+            }
+
+            navigator.geolocation.getCurrentPosition(pos => {
                 const lat = pos.coords.latitude;
                 const lon = pos.coords.longitude;
-                
-                if (!map) initMap(lat, lon);
-                
-                lastGpsCoord = {lat, lng: lon};
+                initMap(lat, lon);
+                startGpsCoord = {lat, lng: lon};
                 currentPdrCoord = {lat, lng: lon};
-                
-                document.getElementById('start-btn').disabled = false;
-                document.getElementById('status-tag').innerText = "GPS SYNCED";
-                document.getElementById('status-tag').className = "px-3 py-1 rounded-full bg-emerald-500/20 text-[10px] font-bold text-emerald-500";
-            });
+                document.getElementById('go-btn').disabled = false;
+                document.getElementById('calib-status').innerText = "Status: Ready";
+            }, null, {enableHighAccuracy: true});
 
-            // Heading (Magnetometer)
-            window.addEventListener('deviceorientationabsolute', (e) => {
+            window.addEventListener('deviceorientationabsolute', e => {
                 heading = e.webkitCompassHeading || e.alpha || 0;
-                document.getElementById('heading-val').innerText = Math.round(heading) + "°";
             });
 
-            // Step Detection (Accelerometer)
-            window.addEventListener('devicemotion', (e) => {
+            window.addEventListener('devicemotion', e => {
                 if (!isRunning) return;
-                
                 const acc = e.accelerationIncludingGravity;
                 if (!acc) return;
-
-                // Simple Peak Detection for steps
                 const mag = Math.sqrt(acc.x**2 + acc.y**2 + acc.z**2);
-                if (mag > STEP_THRESHOLD && lastAccelMag <= STEP_THRESHOLD) {
-                    onStep();
-                }
+                if (mag > STEP_THRESHOLD && lastAccelMag <= STEP_THRESHOLD) onStep();
                 lastAccelMag = mag;
             });
         }
 
         function onStep() {
             steps++;
-            pdrDistance += STEP_LENGTH;
-            document.getElementById('step-count').innerText = steps;
-            document.getElementById('pdr-dist').innerText = pdrDistance.toFixed(1) + "m";
-
-            // Update PDR Position
-            currentPdrCoord = getDestinationPoint(currentPdrCoord.lat, currentPdrCoord.lng, heading, STEP_LENGTH);
-            pdrPath.addLatLng([currentPdrCoord.lat, currentPdrCoord.lng]);
             
-            updateDrift();
+            // Handle Stride Calibration (First 10 steps)
+            if (isCalibrating) {
+                const progress = (steps / 10) * 100;
+                document.getElementById('calib-bar').style.width = progress + "%";
+                document.getElementById('calib-progress').innerText = Math.round(progress) + "%";
+                
+                if (steps === 10) finishCalibration();
+            }
+
+            // Move PDR
+            const nextPoint = getDestinationPoint(currentPdrCoord.lat, currentPdrCoord.lng, heading, strideLength);
+            currentPdrCoord = nextPoint;
+            pdrPath.addLatLng([nextPoint.lat, nextPoint.lng]);
+            map.panTo([nextPoint.lat, nextPoint.lng]);
+            
+            updateMetrics();
         }
 
-        function updateDrift() {
-            if (lastGpsCoord && currentPdrCoord) {
-                const drift = calculateDistance(lastGpsCoord, currentPdrCoord);
+        function finishCalibration() {
+            isCalibrating = false;
+            if (currentGpsCoord && startGpsCoord) {
+                const totalGpsDist = map.distance([startGpsCoord.lat, startGpsCoord.lng], [currentGpsCoord.lat, currentGpsCoord.lng]);
+                strideLength = totalGpsDist / 10;
+                // Sanity check for stride length (0.4m to 1.2m)
+                strideLength = Math.max(0.4, Math.min(1.2, strideLength));
+                document.getElementById('stride-val').innerText = strideLength.toFixed(2) + "m";
+                document.getElementById('calib-status').innerText = "Status: Calibrated";
+                document.getElementById('calib-box').classList.add('opacity-40');
+            }
+        }
+
+        function getDestinationPoint(lat, lon, brng, dist) {
+            const R = 6378137;
+            const d = dist / R;
+            const brngRad = brng * Math.PI / 180;
+            const lat1 = lat * Math.PI / 180;
+            const lon1 = lon * Math.PI / 180;
+            const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brngRad));
+            const lon2 = lon1 + Math.atan2(Math.sin(brngRad) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+            return { lat: lat2 * 180 / Math.PI, lng: lon2 * 180 / Math.PI };
+        }
+
+        function updateMetrics() {
+            if (currentGpsCoord && currentPdrCoord) {
+                const drift = map.distance([currentGpsCoord.lat, currentGpsCoord.lng], [currentPdrCoord.lat, currentPdrCoord.lng]);
                 document.getElementById('drift-val').innerText = drift.toFixed(1) + "m";
             }
         }
 
-        // Continuous GPS Watch
-        function startGpsWatch() {
-            navigator.geolocation.watchPosition((pos) => {
-                const newCoord = {lat: pos.coords.latitude, lng: pos.coords.longitude};
-                lastGpsCoord = newCoord;
-                gpsPath.addLatLng([newCoord.lat, newCoord.lng]);
-                updateDrift();
-            }, null, {enableHighAccuracy: true});
-        }
-
-        // Button Handlers
         document.getElementById('init-btn').addEventListener('click', () => {
-            startSensors();
-            document.getElementById('init-btn').innerText = "Sensors Online";
-            document.getElementById('init-btn').className = "col-span-2 bg-slate-800 py-4 rounded-2xl font-bold opacity-50";
+            initSensors();
+            document.getElementById('init-btn').disabled = true;
+            document.getElementById('init-btn').innerText = "Sensors Live";
         });
 
-        document.getElementById('start-btn').addEventListener('click', () => {
+        document.getElementById('go-btn').addEventListener('click', () => {
             isRunning = true;
-            startGpsWatch();
-            document.getElementById('start-btn').innerText = "TRACKING...";
-            document.getElementById('start-btn').className = "bg-emerald-500 py-3 rounded-xl font-bold text-sm status-pulse";
-            document.getElementById('status-tag').innerText = "ACTIVE";
-        });
-
-        document.getElementById('reset-btn').addEventListener('click', () => {
-            location.reload();
+            isCalibrating = true;
+            document.getElementById('go-btn').disabled = true;
+            document.getElementById('go-btn').classList.add('active-glow');
+            document.getElementById('calib-box').classList.remove('hidden');
+            document.getElementById('calib-status').innerText = "Status: Calibrating Stride...";
+            
+            navigator.geolocation.watchPosition(pos => {
+                currentGpsCoord = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+                gpsPath.addLatLng([currentGpsCoord.lat, currentGpsCoord.lng]);
+                updateMetrics();
+            }, null, {enableHighAccuracy: true});
         });
 
     </script>
