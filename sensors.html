@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .sensor-card { transition: all 0.3s ease; }
+        .status-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .compass-ring { transition: transform 0.1s linear; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans pb-10">
+
+    <div class="max-w-md mx-auto p-4">
+        <header class="py-6 text-center">
+            <h1 class="text-2xl font-black tracking-tight text-white uppercase">Sensor<span class="text-blue-500">Pro</span></h1>
+            <p class="text-slate-400 text-sm mt-1">Advanced Telemetry Suite</p>
+        </header>
+
+        <!-- Permission Gate -->
+        <div id="permission-gate" class="bg-slate-800 rounded-3xl p-8 mb-6 border border-slate-700 text-center shadow-2xl">
+            <div class="mb-4 inline-flex items-center justify-center w-16 h-16 bg-blue-500/20 text-blue-400 rounded-full">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </div>
+            <h2 class="text-xl font-bold mb-2 text-white">Initialize Sensors</h2>
+            <p class="text-slate-400 mb-6 text-sm">Accessing Gyroscope, Magnetometer, and Network telemetry requires explicit user permission.</p>
+            <button id="request-btn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-2xl transition-all active:scale-95 shadow-lg shadow-blue-900/20">
+                Grant Access
+            </button>
+        </div>
+
+        <div id="dashboard" class="hidden space-y-4">
+            
+            <!-- Magnetometer / Compass -->
+            <div class="sensor-card bg-slate-800 p-5 rounded-3xl border border-slate-700">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-slate-300 flex items-center">
+                        <span class="mr-2 text-red-500">🧭</span> Magnetometer
+                    </h3>
+                    <div id="mag-heading" class="font-mono text-xl font-bold text-white">0°</div>
+                </div>
+                <div class="relative flex justify-center py-4">
+                    <div id="compass-viz" class="w-24 h-24 border-4 border-slate-600 rounded-full flex items-center justify-center compass-ring">
+                        <div class="w-1 h-12 bg-red-500 rounded-full absolute -top-1"></div>
+                        <span class="text-xs font-bold">N</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gyroscope (Rotation Rate) -->
+            <div class="sensor-card bg-slate-800 p-5 rounded-3xl border border-slate-700">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-slate-300 flex items-center">
+                        <span class="mr-2 text-purple-500">🔄</span> Gyroscope
+                    </h3>
+                    <span class="text-[10px] uppercase font-bold text-purple-400 bg-purple-500/10 px-2 py-1 rounded">deg/s</span>
+                </div>
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="bg-slate-900/50 p-3 rounded-2xl border border-slate-700/50">
+                        <div class="text-[10px] text-slate-500 uppercase mb-1">Pitch (X)</div>
+                        <div id="gyro-x" class="font-mono font-bold text-lg text-blue-400">0.0</div>
+                    </div>
+                    <div class="bg-slate-900/50 p-3 rounded-2xl border border-slate-700/50">
+                        <div class="text-[10px] text-slate-500 uppercase mb-1">Roll (Y)</div>
+                        <div id="gyro-y" class="font-mono font-bold text-lg text-emerald-400">0.0</div>
+                    </div>
+                    <div class="bg-slate-900/50 p-3 rounded-2xl border border-slate-700/50">
+                        <div class="text-[10px] text-slate-500 uppercase mb-1">Yaw (Z)</div>
+                        <div id="gyro-z" class="font-mono font-bold text-lg text-orange-400">0.0</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network & RSSI Proxy -->
+            <div class="sensor-card bg-slate-800 p-5 rounded-3xl border border-slate-700">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-slate-300 flex items-center">
+                        <span class="mr-2 text-cyan-400">📶</span> Connectivity
+                    </h3>
+                    <span id="net-type" class="text-[10px] uppercase font-bold text-cyan-400 bg-cyan-500/10 px-2 py-1 rounded">Detecting</span>
+                </div>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="text-slate-500">Est. Bandwidth</span>
+                        <span id="net-speed" class="font-mono font-bold text-white">-- Mbps</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm">
+                        <span class="text-slate-500">Round Trip Time</span>
+                        <span id="net-rtt" class="font-mono font-bold text-white">-- ms</span>
+                    </div>
+                    <div class="pt-2 border-t border-slate-700 text-[10px] text-slate-500 italic">
+                        *Browser security prevents direct RSSI (dBm) access.
+                    </div>
+                </div>
+            </div>
+
+            <div id="error-box" class="hidden bg-red-900/20 border border-red-500/50 text-red-400 p-4 rounded-2xl text-sm">
+                <p id="error-msg"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const requestBtn = document.getElementById('request-btn');
+        const gate = document.getElementById('permission-gate');
+        const dashboard = document.getElementById('dashboard');
+        const errorBox = document.getElementById('error-box');
+        const errorMsg = document.getElementById('error-msg');
+
+        function updateUI(id, val) {
+            const el = document.getElementById(id);
+            if (el) el.innerText = val;
+        }
+
+        async function initSensors() {
+            try {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    if (response === 'granted') startListening();
+                    else alert("Permission denied.");
+                } else {
+                    startListening();
+                }
+            } catch (err) {
+                errorBox.classList.remove('hidden');
+                errorMsg.innerText = "Init Error: " + err.message;
+            }
+        }
+
+        function startListening() {
+            gate.classList.add('hidden');
+            dashboard.classList.remove('hidden');
+
+            // 1. Magnetometer (Calculated from Absolute Orientation)
+            window.addEventListener('deviceorientationabsolute', (e) => {
+                let heading = e.webkitCompassHeading || e.alpha;
+                if (heading !== null) {
+                    const rounded = Math.round(heading);
+                    updateUI('mag-heading', rounded + '°');
+                    document.getElementById('compass-viz').style.transform = `rotate(${-rounded}deg)`;
+                }
+            }, true);
+
+            // Fallback for non-absolute orientation
+            window.addEventListener('deviceorientation', (e) => {
+                if (!e.absolute && !e.webkitCompassHeading) {
+                    updateUI('mag-heading', Math.round(e.alpha) + '° (Relative)');
+                }
+            });
+
+            // 2. Gyroscope (Rotation Rate)
+            window.addEventListener('devicemotion', (e) => {
+                const rot = e.rotationRate;
+                if (rot) {
+                    updateUI('gyro-x', rot.alpha?.toFixed(2) || '0.00');
+                    updateUI('gyro-y', rot.beta?.toFixed(2) || '0.00');
+                    updateUI('gyro-z', rot.gamma?.toFixed(2) || '0.00');
+                }
+            });
+
+            // 3. Network Information
+            const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            if (connection) {
+                const updateNet = () => {
+                    updateUI('net-type', connection.effectiveType || 'N/A');
+                    updateUI('net-speed', (connection.downlink || 0) + ' Mbps');
+                    updateUI('net-rtt', (connection.rtt || 0) + ' ms');
+                };
+                connection.addEventListener('change', updateNet);
+                updateNet();
+            }
+        }
+
+        requestBtn.addEventListener('click', initSensors);
+    </script>
+</body>
+</html>
